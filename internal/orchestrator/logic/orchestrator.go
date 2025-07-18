@@ -2,6 +2,7 @@ package logic
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"distro.lol/internal/orchestrator/shard"
@@ -34,10 +35,15 @@ type Orchestrator struct {
 // NewOrchestrator creates a new orchestrator with the given configuration
 func NewOrchestrator(config *OrchestratorConfig) *Orchestrator {
 	ctx, cancel := context.WithCancel(context.Background())
+	workerManager := worker.NewManager(ctx, config.WorkerSyncInterval)
+
+	if err := workerManager.Start(); err != nil {
+		log.Fatalf("Failed to start worker manager: %v", err)
+	}
 
 	return &Orchestrator{
 		config:        config,
-		workerManager: worker.NewManager(ctx, config.WorkerSyncInterval),
+		workerManager: workerManager,
 		shardManager:  shard.NewManager(ctx, config.MasterKey),
 		// storageManager: newStorageManager(ctx, config.SecretThreshold, config.SecretShares),
 		ctx:    ctx,

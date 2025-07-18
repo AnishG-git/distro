@@ -9,6 +9,7 @@ import (
 
 	"github.com/supabase-community/supabase-go"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -57,22 +58,31 @@ func (wm *workerManager) Start() error {
 	// Query sbWorkers from Supabase with only the columns we need
 	sbWorkers, err := wm.getAllWorkersFromSB()
 	if err != nil {
-		log.Fatalf("Failed to get online workers from Supabase: %v", err)
+		return fmt.Errorf("failed to get online workers from Supabase: %w", err)
 	}
 
-	log.Printf("Loaded %d workers from database", len(sbWorkers))
+	log.Printf("Loaded %d worker(s) from database", len(sbWorkers))
 
-	// Populate the local worker map and establish gRPC connections
-	wm.mu.Lock()
-	defer wm.mu.Unlock()
+	wg := sync.WaitGroup{}
 
 	for _, sbWorker := range sbWorkers {
-		// Store worker info in local map
-		wm.workers[sbWorker.WorkerID] = &sbWorker
-
 		// Establish gRPC connection to worker (async)
-		go wm.connectToWorker(sbWorker.WorkerID, sbWorker.Address, sbWorker.GRPCPort)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := wm.connectToWorker(sbWorker.WorkerID, sbWorker.Address, sbWorker.GRPCPort); err != nil {
+				log.Printf("Failed to connect to worker %s: %v", sbWorker.WorkerID, err)
+				return
+			}
+			// Store worker info in local map if worker is not faulty
+			// not using lock here because this is in Start function
+			sbWorker.Status = StatusOnline // Set initial status to online
+			sbWorker.LastHeartbeat = time.Now() // Set initial heartbeat
+			wm.workers[sbWorker.WorkerID] = &sbWorker
+		}()
 	}
+
+	wg.Wait()
 
 	// Start background goroutine for health checks
 	go wm.startHealthCheckLoop()
@@ -85,7 +95,7 @@ func (wm *workerManager) Start() error {
 }
 
 // connectToWorker establishes a gRPC connection to a worker
-func (wm *workerManager) connectToWorker(workerID, address string, grpcPort int) {
+func (wm *workerManager) connectToWorker(workerID, address string, grpcPort int) error {
 	target := fmt.Sprintf("%s:%d", address, grpcPort)
 
 	// Create gRPC connection with insecure credentials for now
@@ -93,10 +103,17 @@ func (wm *workerManager) connectToWorker(workerID, address string, grpcPort int)
 	conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Printf("Failed to connect to worker %s at %s: %v", workerID, target, err)
+		return fmt.Errorf("failed to connect to worker %s at %s: %w", workerID, target, err)
+	}
 
-		// Update worker status to offline on connection failure
-		wm.markWorkerOffline(workerID)
-		return
+	// TODO: Implement actual health check RPC call
+	// for now, just wait for the connection to change from idle
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if ok := conn.WaitForStateChange(ctx, connectivity.Idle); !ok {
+		log.Printf("Failed to ping worker %s at %s", workerID, target)
+		conn.Close()
+		return fmt.Errorf("failed to ping worker %s at %s", workerID, target)
 	}
 
 	// Store the connection
@@ -114,6 +131,8 @@ func (wm *workerManager) connectToWorker(workerID, address string, grpcPort int)
 		// Worker was removed while we were connecting
 		conn.Close()
 	}
+
+	return nil
 }
 
 // startHealthCheckLoop runs periodic health checks on all workers
@@ -134,60 +153,19 @@ func (wm *workerManager) startHealthCheckLoop() {
 
 // performHealthChecks checks the health of all workers
 func (wm *workerManager) performHealthChecks() {
-	wm.mu.RLock()
-	workers := make([]*Worker, 0, len(wm.workers))
-	for _, worker := range wm.workers {
-		workers = append(workers, worker)
-	}
-	wm.mu.RUnlock()
-
-	for _, worker := range workers {
-		go wm.checkWorkerHealth(worker.WorkerID)
-	}
-}
-
-// checkWorkerHealth performs a health check on a specific worker
-func (wm *workerManager) checkWorkerHealth(workerID string) {
-	wm.mu.RLock()
-	worker, exists := wm.workers[workerID]
-	if !exists {
-		wm.mu.RUnlock()
-		return
-	}
-
-	// For now, just check if the gRPC connection is still valid
-	// TODO: Implement actual health check RPC call
-	if worker.Conn == nil {
-		wm.mu.RUnlock()
-		wm.markWorkerOffline(workerID)
-		return
-	}
-
-	wm.mu.RUnlock()
-
-	// Check connection state
-	state := worker.Conn.GetState()
-	if state.String() != "READY" && state.String() != "IDLE" {
-		log.Printf("Worker %s connection unhealthy: %s", workerID, state.String())
-		wm.markWorkerOffline(workerID)
-
-		// Try to reconnect
-		go wm.connectToWorker(worker.WorkerID, worker.Address, worker.GRPCPort)
-	}
-}
-
-// markWorkerOffline marks a worker as offline
-func (wm *workerManager) markWorkerOffline(workerID string) {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
-
-	if worker, exists := wm.workers[workerID]; exists {
-		worker.Status = StatusOffline
-		if worker.Conn != nil {
-			worker.Conn.Close()
-			worker.Conn = nil
+	now := time.Now()
+	for workerID, worker := range wm.workers {
+		healthy := worker.LastHeartbeat.Add(45 * time.Second).After(now)
+		newStatus := StatusOffline
+		if healthy {
+			newStatus = StatusOnline
 		}
-		log.Printf("Marked worker %s as offline", workerID)
+		if worker.Status != newStatus {
+			worker.Status = newStatus
+			log.Printf("Health Check: Worker %s status changed to %v", workerID, newStatus)
+		}
 	}
 }
 
