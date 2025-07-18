@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package rpc;
+
+option go_package = "pkg/rpc/worker";
+
+message ShardEnvelope {
+  string shard_id  = 1;
+  string key_id    = 2;
+  bytes  nonce     = 3;
+  bytes  cipher    = 4;
+  bytes  mac       = 5;
+}
+
+message Ack {
+  bool ok = 1;
+}
+
+message ShardRequest {
+  string shard_id = 1;
+}
+
+service Worker {
+  rpc StoreShard (ShardEnvelope) returns (Ack);
+  rpc FetchShard (ShardRequest)  returns (ShardEnvelope);
+}
