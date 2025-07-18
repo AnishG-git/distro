@@ -1,4 +1,4 @@
-package orchestrator
+package logic
 
 import (
 	"context"
@@ -8,8 +8,8 @@ import (
 	"distro.lol/internal/orchestrator/worker"
 )
 
-// Config holds orchestrator configuration
-type Config struct {
+// OrchestratorConfig holds orchestrator configuration
+type OrchestratorConfig struct {
 	HTTPPort           int           // REST API port for clients
 	GRPCPort           int           // gRPC port for worker communication
 	MasterKey          []byte        // Master encryption key
@@ -23,7 +23,7 @@ type Config struct {
 
 // Orchestrator coordinates all components
 type Orchestrator struct {
-	config        *Config
+	config        *OrchestratorConfig
 	workerManager worker.Manager
 	shardManager  shard.Manager
 	// storageManager *storageManager
@@ -31,8 +31,8 @@ type Orchestrator struct {
 	cancel context.CancelFunc
 }
 
-// New creates a new orchestrator with the given configuration
-func New(config *Config) *Orchestrator {
+// NewOrchestrator creates a new orchestrator with the given configuration
+func NewOrchestrator(config *OrchestratorConfig) *Orchestrator {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Orchestrator{
@@ -45,12 +45,12 @@ func New(config *Config) *Orchestrator {
 	}
 }
 
-func (o *Orchestrator) GetConfig() Config {
-    orig := o.config
-    copied := *orig
-    if orig.MasterKey != nil {
-        copied.MasterKey = make([]byte, len(orig.MasterKey))
-        copy(copied.MasterKey, orig.MasterKey)
-    }
-    return copied
+func (o *Orchestrator) GetConfig() OrchestratorConfig {
+	orig := o.config
+	copied := *orig
+	if orig.MasterKey != nil {
+		copied.MasterKey = make([]byte, len(orig.MasterKey))
+		copy(copied.MasterKey, orig.MasterKey)
+	}
+	return copied
 }

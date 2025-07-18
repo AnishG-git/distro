@@ -6,14 +6,14 @@ import (
 	"log"
 	"net"
 
-	"distro.lol/internal/orchestrator/orchestrator"
+	"distro.lol/internal/orchestrator/logic"
 	pb "distro.lol/pkg/rpc/orchestrator"
 	"google.golang.org/grpc"
 )
 
 type grpcServer struct {
 	pb.UnimplementedOrchestratorServiceServer
-	orchestrator *orchestrator.Orchestrator
+	orchestrator *logic.Orchestrator
 }
 
 func (s *grpcServer) start(ctx context.Context, errChan chan error) {

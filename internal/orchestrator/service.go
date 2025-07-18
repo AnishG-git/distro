@@ -3,11 +3,11 @@ package orchestrator
 import (
 	"context"
 
-	"distro.lol/internal/orchestrator/orchestrator"
+	"distro.lol/internal/orchestrator/logic"
 )
 
 type Service interface {
-	Start() error
+	Start(ctx context.Context) error
 	Stop() error
 }
 
@@ -16,9 +16,9 @@ type service struct {
 	httpServer *httpServer
 }
 
-// New creates a new orchestrator service instance
-func New(config *orchestrator.Config) *service {
-	orchestrator := orchestrator.New(config)
+// NewService creates a new orchestrator service instance
+func NewService(config *logic.OrchestratorConfig) Service {
+	orchestrator := logic.NewOrchestrator(config)
 	return &service{
 		grpcServer: &grpcServer{orchestrator: orchestrator},
 		httpServer: &httpServer{orchestrator: orchestrator},

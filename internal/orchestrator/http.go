@@ -7,12 +7,12 @@ import (
 	"net/http"
 	"strings"
 
-	"distro.lol/internal/orchestrator/orchestrator"
+	"distro.lol/internal/orchestrator/logic"
 )
 
 type httpServer struct {
 	// Add fields for HTTP server configuration, handlers, etc.
-	orchestrator *orchestrator.Orchestrator
+	orchestrator *logic.Orchestrator
 }
 
 func (s *httpServer) start(ctx context.Context, errChan chan error) {
