@@ -19,9 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Orchestrator_Register_FullMethodName      = "/rpc.Orchestrator/Register"
-	Orchestrator_SendHeartbeat_FullMethodName = "/rpc.Orchestrator/SendHeartbeat"
-	Orchestrator_Unregister_FullMethodName    = "/rpc.Orchestrator/Unregister"
+	Orchestrator_Register_FullMethodName      = "/rpc.orchestrator.Orchestrator/Register"
+	Orchestrator_SendHeartbeat_FullMethodName = "/rpc.orchestrator.Orchestrator/SendHeartbeat"
+	Orchestrator_Unregister_FullMethodName    = "/rpc.orchestrator.Orchestrator/Unregister"
+	Orchestrator_Ping_FullMethodName          = "/rpc.orchestrator.Orchestrator/Ping"
 )
 
 // OrchestratorClient is the client API for Orchestrator service.
@@ -34,6 +35,7 @@ type OrchestratorClient interface {
 	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
 	SendHeartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
 	Unregister(ctx context.Context, in *UnregisterRequest, opts ...grpc.CallOption) (*UnregisterResponse, error)
+	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
 }
 
 type orchestratorClient struct {
@@ -74,6 +76,16 @@ func (c *orchestratorClient) Unregister(ctx context.Context, in *UnregisterReque
 	return out, nil
 }
 
+func (c *orchestratorClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PingResponse)
+	err := c.cc.Invoke(ctx, Orchestrator_Ping_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OrchestratorServer is the server API for Orchestrator service.
 // All implementations must embed UnimplementedOrchestratorServer
 // for forward compatibility.
@@ -84,6 +96,7 @@ type OrchestratorServer interface {
 	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
 	SendHeartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
 	Unregister(context.Context, *UnregisterRequest) (*UnregisterResponse, error)
+	Ping(context.Context, *PingRequest) (*PingResponse, error)
 	mustEmbedUnimplementedOrchestratorServer()
 }
 
@@ -102,6 +115,9 @@ func (UnimplementedOrchestratorServer) SendHeartbeat(context.Context, *Heartbeat
 }
 func (UnimplementedOrchestratorServer) Unregister(context.Context, *UnregisterRequest) (*UnregisterResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Unregister not implemented")
+}
+func (UnimplementedOrchestratorServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
 }
 func (UnimplementedOrchestratorServer) mustEmbedUnimplementedOrchestratorServer() {}
 func (UnimplementedOrchestratorServer) testEmbeddedByValue()                      {}
@@ -178,11 +194,29 @@ func _Orchestrator_Unregister_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Orchestrator_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrchestratorServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Orchestrator_Ping_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrchestratorServer).Ping(ctx, req.(*PingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Orchestrator_ServiceDesc is the grpc.ServiceDesc for Orchestrator service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Orchestrator_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "rpc.Orchestrator",
+	ServiceName: "rpc.orchestrator.Orchestrator",
 	HandlerType: (*OrchestratorServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -196,6 +230,10 @@ var Orchestrator_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Unregister",
 			Handler:    _Orchestrator_Unregister_Handler,
+		},
+		{
+			MethodName: "Ping",
+			Handler:    _Orchestrator_Ping_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

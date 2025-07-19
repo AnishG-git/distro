@@ -8,16 +8,9 @@ import (
 
 func main() {
 	// expected usage of the Worker struct
-	worker := worker.New("localhost:9090", 10)
+	worker := worker.New("127.0.0.1:8081", 10)
 
-	errChan := make(chan error, 1)
-	go func() {
-		if err := worker.Start(); err != nil {
-			errChan <- err
-		}
-	}()
-
-	if err := <-errChan; err != nil {
-		log.Fatalf("Worker encountered an error: %v", err)
+	if err := worker.Start(); err != nil {
+		log.Fatalf("Failed to start worker: %v", err)
 	}
 }

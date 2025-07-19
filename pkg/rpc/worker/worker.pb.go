@@ -233,7 +233,8 @@ var File_api_worker_proto protoreflect.FileDescriptor
 
 const file_api_worker_proto_rawDesc = "" +
 	"\n" +
-	"\x10api/worker.proto\x12\x03rpc\"j\n" +
+	"\x10api/worker.proto\x12\n" +
+	"rpc.worker\"j\n" +
 	"\rShardEnvelope\x12\x19\n" +
 	"\bshard_id\x18\x01 \x01(\tR\ashardId\x12\x14\n" +
 	"\x05nonce\x18\x02 \x01(\fR\x05nonce\x12\x16\n" +
@@ -245,13 +246,13 @@ const file_api_worker_proto_rawDesc = "" +
 	"\fShardRequest\x12\x19\n" +
 	"\bshard_id\x18\x01 \x01(\tR\ashardId\"!\n" +
 	"\vPingRequest\x12\x12\n" +
-	"\x04ping\x18\x01 \x01(\tR\x04ping2\x9f\x01\n" +
-	"\x06Worker\x123\n" +
+	"\x04ping\x18\x01 \x01(\tR\x04ping2\xc9\x01\n" +
+	"\x06Worker\x12A\n" +
 	"\n" +
-	"StoreShard\x12\x12.rpc.ShardEnvelope\x1a\x11.rpc.StorageStats\x123\n" +
+	"StoreShard\x12\x19.rpc.worker.ShardEnvelope\x1a\x18.rpc.worker.StorageStats\x12A\n" +
 	"\n" +
-	"FetchShard\x12\x11.rpc.ShardRequest\x1a\x12.rpc.ShardEnvelope\x12+\n" +
-	"\x04Ping\x12\x10.rpc.PingRequest\x1a\x11.rpc.StorageStatsB\x10Z\x0epkg/rpc/workerb\x06proto3"
+	"FetchShard\x12\x18.rpc.worker.ShardRequest\x1a\x19.rpc.worker.ShardEnvelope\x129\n" +
+	"\x04Ping\x12\x17.rpc.worker.PingRequest\x1a\x18.rpc.worker.StorageStatsB\x10Z\x0epkg/rpc/workerb\x06proto3"
 
 var (
 	file_api_worker_proto_rawDescOnce sync.Once
@@ -267,18 +268,18 @@ func file_api_worker_proto_rawDescGZIP() []byte {
 
 var file_api_worker_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_api_worker_proto_goTypes = []any{
-	(*ShardEnvelope)(nil), // 0: rpc.ShardEnvelope
-	(*StorageStats)(nil),  // 1: rpc.StorageStats
-	(*ShardRequest)(nil),  // 2: rpc.ShardRequest
-	(*PingRequest)(nil),   // 3: rpc.PingRequest
+	(*ShardEnvelope)(nil), // 0: rpc.worker.ShardEnvelope
+	(*StorageStats)(nil),  // 1: rpc.worker.StorageStats
+	(*ShardRequest)(nil),  // 2: rpc.worker.ShardRequest
+	(*PingRequest)(nil),   // 3: rpc.worker.PingRequest
 }
 var file_api_worker_proto_depIdxs = []int32{
-	0, // 0: rpc.Worker.StoreShard:input_type -> rpc.ShardEnvelope
-	2, // 1: rpc.Worker.FetchShard:input_type -> rpc.ShardRequest
-	3, // 2: rpc.Worker.Ping:input_type -> rpc.PingRequest
-	1, // 3: rpc.Worker.StoreShard:output_type -> rpc.StorageStats
-	0, // 4: rpc.Worker.FetchShard:output_type -> rpc.ShardEnvelope
-	1, // 5: rpc.Worker.Ping:output_type -> rpc.StorageStats
+	0, // 0: rpc.worker.Worker.StoreShard:input_type -> rpc.worker.ShardEnvelope
+	2, // 1: rpc.worker.Worker.FetchShard:input_type -> rpc.worker.ShardRequest
+	3, // 2: rpc.worker.Worker.Ping:input_type -> rpc.worker.PingRequest
+	1, // 3: rpc.worker.Worker.StoreShard:output_type -> rpc.worker.StorageStats
+	0, // 4: rpc.worker.Worker.FetchShard:output_type -> rpc.worker.ShardEnvelope
+	1, // 5: rpc.worker.Worker.Ping:output_type -> rpc.worker.StorageStats
 	3, // [3:6] is the sub-list for method output_type
 	0, // [0:3] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name

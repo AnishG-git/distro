@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package rpc;
+package rpc.orchestrator;
 
 option go_package = "pkg/rpc/orchestrator";
 
@@ -10,6 +10,7 @@ service Orchestrator {
   rpc Register(RegisterRequest) returns (RegisterResponse);
   rpc SendHeartbeat(HeartbeatRequest) returns (HeartbeatResponse);
   rpc Unregister(UnregisterRequest) returns (UnregisterResponse);
+  rpc Ping(PingRequest) returns (PingResponse);
 }
 
 // Worker registration messages
@@ -40,4 +41,12 @@ message UnregisterRequest {
 message UnregisterResponse {
   bool success = 1;
   string message = 2;
+}
+
+message PingRequest {
+  string message = 1; // Ping message
+}
+
+message PingResponse {
+  bool success = 1;
 }

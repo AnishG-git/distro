@@ -20,7 +20,7 @@ func (w *worker) StoreShard(ctx context.Context, envelope *pb.ShardEnvelope) (*p
 	return &pb.StorageStats{}, nil
 }
 
-func (w *worker) FetchShard(req *pb.ShardRequest) (*pb.ShardEnvelope, error) {
+func (w *worker) FetchShard(ctx context.Context, req *pb.ShardRequest) (*pb.ShardEnvelope, error) {
 	// Implement the logic to fetch a shard
 	return &pb.ShardEnvelope{}, nil
 }

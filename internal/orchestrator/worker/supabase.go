@@ -74,7 +74,7 @@ func (wm *workerManager) getOnlineWorkersFromSB() ([]Worker, error) {
 
 	var workers []Worker
 	data, _, err := wm.sbClient.From("workers").
-		Select("worker_id,address,grpc_port,total_capacity,used_capacity,status,last_heartbeat", "", false).
+		Select("worker_id,worker_endpoint,total_capacity,used_capacity,status,last_heartbeat", "", false).
 		Eq("status", string(StatusOnline)).
 		Execute()
 	if err != nil {

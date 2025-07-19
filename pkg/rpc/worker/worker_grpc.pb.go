@@ -19,9 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Worker_StoreShard_FullMethodName = "/rpc.Worker/StoreShard"
-	Worker_FetchShard_FullMethodName = "/rpc.Worker/FetchShard"
-	Worker_Ping_FullMethodName       = "/rpc.Worker/Ping"
+	Worker_StoreShard_FullMethodName = "/rpc.worker.Worker/StoreShard"
+	Worker_FetchShard_FullMethodName = "/rpc.worker.Worker/FetchShard"
+	Worker_Ping_FullMethodName       = "/rpc.worker.Worker/Ping"
 )
 
 // WorkerClient is the client API for Worker service.
@@ -176,7 +176,7 @@ func _Worker_Ping_Handler(srv interface{}, ctx context.Context, dec func(interfa
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Worker_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "rpc.Worker",
+	ServiceName: "rpc.worker.Worker",
 	HandlerType: (*WorkerServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

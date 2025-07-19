@@ -9,8 +9,9 @@ import (
 
 	"github.com/supabase-community/supabase-go"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
+
+	pbw "distro.lol/pkg/rpc/worker"
 )
 
 type Manager interface {
@@ -110,15 +111,12 @@ func (wm *workerManager) establishWorkerConn(target string) (*grpc.ClientConn, e
 		return nil, err
 	}
 
-	// TODO: Implement actual health check RPC call
-	// for now, just wait for the connection to change from idle
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	if ok := conn.WaitForStateChange(ctx, connectivity.Idle); !ok {
-		conn.Close()
-		return nil, fmt.Errorf("ping failed at %s", target)
+	// ping worker
+	capacity, usedSpace, err := wm.retrieveWorkerStats(conn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to ping worker at %s: %w", target, err)
 	}
-
+	log.Printf("Worker %s is online with capacity %d and used space %d", target, capacity, usedSpace)
 	return conn, nil
 }
 
@@ -156,21 +154,25 @@ func (wm *workerManager) performHealthChecks() {
 	}
 }
 
-// helper function to ping worker grpc server
-func (wm *workerManager) pingWorker(worker *Worker) error {
-	if worker.Conn == nil {
-		return fmt.Errorf("worker %s has no gRPC connection", worker.WorkerID)
+// gets worker's stats from worker's connection
+// also can be used to ping worker
+func (wm *workerManager) retrieveWorkerStats(conn *grpc.ClientConn) (int64, int64, error) {
+	if conn == nil {
+		return 0, 0, fmt.Errorf("worker has no gRPC connection")
 	}
-	_, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	// TODO: Implement actual health check RPC call
-	// for now, just wait for the connection to change from idle
-	// if err := worker.Conn.Invoke(ctx, "HealthCheck", &emptypb.Empty{}, &emptypb.Empty{}); err != nil {
-	// 	return fmt.Errorf("health check failed for worker %s: %w", worker.WorkerID, err)
-	// }
+	stats, err := pbw.NewWorkerClient(conn).Ping(ctx, &pbw.PingRequest{
+		Ping: "ping",
+	})
 
-	return nil
+	if err != nil {
+		return 0, 0, fmt.Errorf("ping failed for worker: %w", err)
+	}
+
+	return stats.TotalCapacity, stats.UsedCapacity, nil
 }
 
 // Stop stops the worker manager and closes all connections

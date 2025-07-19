@@ -45,6 +45,7 @@ func (s *grpcServer) start(ctx context.Context, errChan chan error) {
 }
 
 func (s *grpcServer) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
+	log.Printf("Received registration request for worker %s", req.WorkerId)
 	if ctx.Err() != nil {
 		return nil, status.Errorf(codes.Canceled, "request canceled: %v", ctx.Err())
 	}
@@ -57,4 +58,14 @@ func (s *grpcServer) Register(ctx context.Context, req *pb.RegisterRequest) (*pb
 
 	log.Printf("Worker %s registered", req.WorkerId)
 	return &pb.RegisterResponse{Success: true}, nil
+}
+
+func (s *grpcServer) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
+	log.Printf("Received ping request: %s", req.Message)
+	if ctx.Err() != nil {
+		return nil, status.Errorf(codes.Canceled, "request canceled: %v", ctx.Err())
+	}
+
+	// Respond to ping request
+	return &pb.PingResponse{Success: true}, nil
 }

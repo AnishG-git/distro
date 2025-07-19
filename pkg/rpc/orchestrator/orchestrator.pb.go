@@ -326,11 +326,99 @@ func (x *UnregisterResponse) GetMessage() string {
 	return ""
 }
 
+type PingRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Message       string                 `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"` // Ping message
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PingRequest) Reset() {
+	*x = PingRequest{}
+	mi := &file_api_orchestrator_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PingRequest) ProtoMessage() {}
+
+func (x *PingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_orchestrator_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PingRequest.ProtoReflect.Descriptor instead.
+func (*PingRequest) Descriptor() ([]byte, []int) {
+	return file_api_orchestrator_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *PingRequest) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+type PingResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PingResponse) Reset() {
+	*x = PingResponse{}
+	mi := &file_api_orchestrator_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PingResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PingResponse) ProtoMessage() {}
+
+func (x *PingResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_orchestrator_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PingResponse.ProtoReflect.Descriptor instead.
+func (*PingResponse) Descriptor() ([]byte, []int) {
+	return file_api_orchestrator_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *PingResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
 var File_api_orchestrator_proto protoreflect.FileDescriptor
 
 const file_api_orchestrator_proto_rawDesc = "" +
 	"\n" +
-	"\x16api/orchestrator.proto\x12\x03rpc\"\x9d\x01\n" +
+	"\x16api/orchestrator.proto\x12\x10rpc.orchestrator\"\x9d\x01\n" +
 	"\x0fRegisterRequest\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12'\n" +
 	"\x0fworker_endpoint\x18\x02 \x01(\tR\x0eworkerEndpoint\x12%\n" +
@@ -348,12 +436,17 @@ const file_api_orchestrator_proto_rawDesc = "" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\"H\n" +
 	"\x12UnregisterResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage2\xc6\x01\n" +
-	"\fOrchestrator\x127\n" +
-	"\bRegister\x12\x14.rpc.RegisterRequest\x1a\x15.rpc.RegisterResponse\x12>\n" +
-	"\rSendHeartbeat\x12\x15.rpc.HeartbeatRequest\x1a\x16.rpc.HeartbeatResponse\x12=\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"'\n" +
+	"\vPingRequest\x12\x18\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage\"(\n" +
+	"\fPingResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess2\xdb\x02\n" +
+	"\fOrchestrator\x12Q\n" +
+	"\bRegister\x12!.rpc.orchestrator.RegisterRequest\x1a\".rpc.orchestrator.RegisterResponse\x12X\n" +
+	"\rSendHeartbeat\x12\".rpc.orchestrator.HeartbeatRequest\x1a#.rpc.orchestrator.HeartbeatResponse\x12W\n" +
 	"\n" +
-	"Unregister\x12\x16.rpc.UnregisterRequest\x1a\x17.rpc.UnregisterResponseB\x16Z\x14pkg/rpc/orchestratorb\x06proto3"
+	"Unregister\x12#.rpc.orchestrator.UnregisterRequest\x1a$.rpc.orchestrator.UnregisterResponse\x12E\n" +
+	"\x04Ping\x12\x1d.rpc.orchestrator.PingRequest\x1a\x1e.rpc.orchestrator.PingResponseB\x16Z\x14pkg/rpc/orchestratorb\x06proto3"
 
 var (
 	file_api_orchestrator_proto_rawDescOnce sync.Once
@@ -367,24 +460,28 @@ func file_api_orchestrator_proto_rawDescGZIP() []byte {
 	return file_api_orchestrator_proto_rawDescData
 }
 
-var file_api_orchestrator_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_api_orchestrator_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_api_orchestrator_proto_goTypes = []any{
-	(*RegisterRequest)(nil),    // 0: rpc.RegisterRequest
-	(*RegisterResponse)(nil),   // 1: rpc.RegisterResponse
-	(*HeartbeatRequest)(nil),   // 2: rpc.HeartbeatRequest
-	(*HeartbeatResponse)(nil),  // 3: rpc.HeartbeatResponse
-	(*UnregisterRequest)(nil),  // 4: rpc.UnregisterRequest
-	(*UnregisterResponse)(nil), // 5: rpc.UnregisterResponse
+	(*RegisterRequest)(nil),    // 0: rpc.orchestrator.RegisterRequest
+	(*RegisterResponse)(nil),   // 1: rpc.orchestrator.RegisterResponse
+	(*HeartbeatRequest)(nil),   // 2: rpc.orchestrator.HeartbeatRequest
+	(*HeartbeatResponse)(nil),  // 3: rpc.orchestrator.HeartbeatResponse
+	(*UnregisterRequest)(nil),  // 4: rpc.orchestrator.UnregisterRequest
+	(*UnregisterResponse)(nil), // 5: rpc.orchestrator.UnregisterResponse
+	(*PingRequest)(nil),        // 6: rpc.orchestrator.PingRequest
+	(*PingResponse)(nil),       // 7: rpc.orchestrator.PingResponse
 }
 var file_api_orchestrator_proto_depIdxs = []int32{
-	0, // 0: rpc.Orchestrator.Register:input_type -> rpc.RegisterRequest
-	2, // 1: rpc.Orchestrator.SendHeartbeat:input_type -> rpc.HeartbeatRequest
-	4, // 2: rpc.Orchestrator.Unregister:input_type -> rpc.UnregisterRequest
-	1, // 3: rpc.Orchestrator.Register:output_type -> rpc.RegisterResponse
-	3, // 4: rpc.Orchestrator.SendHeartbeat:output_type -> rpc.HeartbeatResponse
-	5, // 5: rpc.Orchestrator.Unregister:output_type -> rpc.UnregisterResponse
-	3, // [3:6] is the sub-list for method output_type
-	0, // [0:3] is the sub-list for method input_type
+	0, // 0: rpc.orchestrator.Orchestrator.Register:input_type -> rpc.orchestrator.RegisterRequest
+	2, // 1: rpc.orchestrator.Orchestrator.SendHeartbeat:input_type -> rpc.orchestrator.HeartbeatRequest
+	4, // 2: rpc.orchestrator.Orchestrator.Unregister:input_type -> rpc.orchestrator.UnregisterRequest
+	6, // 3: rpc.orchestrator.Orchestrator.Ping:input_type -> rpc.orchestrator.PingRequest
+	1, // 4: rpc.orchestrator.Orchestrator.Register:output_type -> rpc.orchestrator.RegisterResponse
+	3, // 5: rpc.orchestrator.Orchestrator.SendHeartbeat:output_type -> rpc.orchestrator.HeartbeatResponse
+	5, // 6: rpc.orchestrator.Orchestrator.Unregister:output_type -> rpc.orchestrator.UnregisterResponse
+	7, // 7: rpc.orchestrator.Orchestrator.Ping:output_type -> rpc.orchestrator.PingResponse
+	4, // [4:8] is the sub-list for method output_type
+	0, // [0:4] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -401,7 +498,7 @@ func file_api_orchestrator_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_orchestrator_proto_rawDesc), len(file_api_orchestrator_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
