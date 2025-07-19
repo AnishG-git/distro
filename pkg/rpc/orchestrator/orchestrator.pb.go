@@ -23,13 +23,13 @@ const (
 
 // Worker registration messages
 type RegisterRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Address       string                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
-	Port          int32                  `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"` // gRPC port for the worker
-	TotalCapacity int64                  `protobuf:"varint,3,opt,name=total_capacity,json=totalCapacity,proto3" json:"total_capacity,omitempty"`
-	UsedSpace     int64                  `protobuf:"varint,4,opt,name=used_space,json=usedSpace,proto3" json:"used_space,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId       string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`                   // Unique identifier for the worker
+	WorkerEndpoint string                 `protobuf:"bytes,2,opt,name=worker_endpoint,json=workerEndpoint,proto3" json:"worker_endpoint,omitempty"` // gRPC endpoint of the worker
+	TotalCapacity  int64                  `protobuf:"varint,3,opt,name=total_capacity,json=totalCapacity,proto3" json:"total_capacity,omitempty"`
+	UsedSpace      int64                  `protobuf:"varint,4,opt,name=used_space,json=usedSpace,proto3" json:"used_space,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *RegisterRequest) Reset() {
@@ -62,18 +62,18 @@ func (*RegisterRequest) Descriptor() ([]byte, []int) {
 	return file_api_orchestrator_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *RegisterRequest) GetAddress() string {
+func (x *RegisterRequest) GetWorkerId() string {
 	if x != nil {
-		return x.Address
+		return x.WorkerId
 	}
 	return ""
 }
 
-func (x *RegisterRequest) GetPort() int32 {
+func (x *RegisterRequest) GetWorkerEndpoint() string {
 	if x != nil {
-		return x.Port
+		return x.WorkerEndpoint
 	}
-	return 0
+	return ""
 }
 
 func (x *RegisterRequest) GetTotalCapacity() int64 {
@@ -92,9 +92,7 @@ func (x *RegisterRequest) GetUsedSpace() int64 {
 
 type RegisterResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	WorkerId      string                 `protobuf:"bytes,2,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"` // Unique identifier for the worker
-	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"` // Success bool
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -134,20 +132,6 @@ func (x *RegisterResponse) GetSuccess() bool {
 		return x.Success
 	}
 	return false
-}
-
-func (x *RegisterResponse) GetWorkerId() string {
-	if x != nil {
-		return x.WorkerId
-	}
-	return ""
-}
-
-func (x *RegisterResponse) GetMessage() string {
-	if x != nil {
-		return x.Message
-	}
-	return ""
 }
 
 type HeartbeatRequest struct {
@@ -346,17 +330,15 @@ var File_api_orchestrator_proto protoreflect.FileDescriptor
 
 const file_api_orchestrator_proto_rawDesc = "" +
 	"\n" +
-	"\x16api/orchestrator.proto\x12\x03orc\"\x85\x01\n" +
-	"\x0fRegisterRequest\x12\x18\n" +
-	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x12\n" +
-	"\x04port\x18\x02 \x01(\x05R\x04port\x12%\n" +
+	"\x16api/orchestrator.proto\x12\x03rpc\"\x9d\x01\n" +
+	"\x0fRegisterRequest\x12\x1b\n" +
+	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12'\n" +
+	"\x0fworker_endpoint\x18\x02 \x01(\tR\x0eworkerEndpoint\x12%\n" +
 	"\x0etotal_capacity\x18\x03 \x01(\x03R\rtotalCapacity\x12\x1d\n" +
 	"\n" +
-	"used_space\x18\x04 \x01(\x03R\tusedSpace\"c\n" +
+	"used_space\x18\x04 \x01(\x03R\tusedSpace\",\n" +
 	"\x10RegisterResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1b\n" +
-	"\tworker_id\x18\x02 \x01(\tR\bworkerId\x12\x18\n" +
-	"\amessage\x18\x03 \x01(\tR\amessage\"/\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"/\n" +
 	"\x10HeartbeatRequest\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\"G\n" +
 	"\x11HeartbeatResponse\x12\x18\n" +
@@ -366,12 +348,12 @@ const file_api_orchestrator_proto_rawDesc = "" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\"H\n" +
 	"\x12UnregisterResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage2\xcd\x01\n" +
-	"\x13OrchestratorService\x127\n" +
-	"\bRegister\x12\x14.orc.RegisterRequest\x1a\x15.orc.RegisterResponse\x12>\n" +
-	"\rSendHeartbeat\x12\x15.orc.HeartbeatRequest\x1a\x16.orc.HeartbeatResponse\x12=\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage2\xc6\x01\n" +
+	"\fOrchestrator\x127\n" +
+	"\bRegister\x12\x14.rpc.RegisterRequest\x1a\x15.rpc.RegisterResponse\x12>\n" +
+	"\rSendHeartbeat\x12\x15.rpc.HeartbeatRequest\x1a\x16.rpc.HeartbeatResponse\x12=\n" +
 	"\n" +
-	"Unregister\x12\x16.orc.UnregisterRequest\x1a\x17.orc.UnregisterResponseB\x16Z\x14pkg/rpc/orchestratorb\x06proto3"
+	"Unregister\x12\x16.rpc.UnregisterRequest\x1a\x17.rpc.UnregisterResponseB\x16Z\x14pkg/rpc/orchestratorb\x06proto3"
 
 var (
 	file_api_orchestrator_proto_rawDescOnce sync.Once
@@ -387,20 +369,20 @@ func file_api_orchestrator_proto_rawDescGZIP() []byte {
 
 var file_api_orchestrator_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_api_orchestrator_proto_goTypes = []any{
-	(*RegisterRequest)(nil),    // 0: orc.RegisterRequest
-	(*RegisterResponse)(nil),   // 1: orc.RegisterResponse
-	(*HeartbeatRequest)(nil),   // 2: orc.HeartbeatRequest
-	(*HeartbeatResponse)(nil),  // 3: orc.HeartbeatResponse
-	(*UnregisterRequest)(nil),  // 4: orc.UnregisterRequest
-	(*UnregisterResponse)(nil), // 5: orc.UnregisterResponse
+	(*RegisterRequest)(nil),    // 0: rpc.RegisterRequest
+	(*RegisterResponse)(nil),   // 1: rpc.RegisterResponse
+	(*HeartbeatRequest)(nil),   // 2: rpc.HeartbeatRequest
+	(*HeartbeatResponse)(nil),  // 3: rpc.HeartbeatResponse
+	(*UnregisterRequest)(nil),  // 4: rpc.UnregisterRequest
+	(*UnregisterResponse)(nil), // 5: rpc.UnregisterResponse
 }
 var file_api_orchestrator_proto_depIdxs = []int32{
-	0, // 0: orc.OrchestratorService.Register:input_type -> orc.RegisterRequest
-	2, // 1: orc.OrchestratorService.SendHeartbeat:input_type -> orc.HeartbeatRequest
-	4, // 2: orc.OrchestratorService.Unregister:input_type -> orc.UnregisterRequest
-	1, // 3: orc.OrchestratorService.Register:output_type -> orc.RegisterResponse
-	3, // 4: orc.OrchestratorService.SendHeartbeat:output_type -> orc.HeartbeatResponse
-	5, // 5: orc.OrchestratorService.Unregister:output_type -> orc.UnregisterResponse
+	0, // 0: rpc.Orchestrator.Register:input_type -> rpc.RegisterRequest
+	2, // 1: rpc.Orchestrator.SendHeartbeat:input_type -> rpc.HeartbeatRequest
+	4, // 2: rpc.Orchestrator.Unregister:input_type -> rpc.UnregisterRequest
+	1, // 3: rpc.Orchestrator.Register:output_type -> rpc.RegisterResponse
+	3, // 4: rpc.Orchestrator.SendHeartbeat:output_type -> rpc.HeartbeatResponse
+	5, // 5: rpc.Orchestrator.Unregister:output_type -> rpc.UnregisterResponse
 	3, // [3:6] is the sub-list for method output_type
 	0, // [0:3] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name

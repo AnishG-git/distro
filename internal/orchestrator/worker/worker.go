@@ -15,7 +15,7 @@ import (
 
 type Manager interface {
 	// RegisterWorker registers a new worker with the manager
-	RegisterWorker(ctx context.Context, workerID, address string, capacity int) error
+	RegisterWorker(ctx context.Context, workerID, workerEndpoint string, capacity, usedSpace int64) error
 	// GetWorker retrieves a worker by ID
 	GetWorker(ctx context.Context, workerID string) (*Worker, error)
 	// ListWorkers lists all registered workers
@@ -36,9 +36,10 @@ type workerManager struct {
 	mu                 *sync.RWMutex
 	workers            map[string]*Worker // workerID -> Info
 	workerSyncInterval time.Duration
+	minAvailableSpace  int64
 }
 
-func NewManager(ctx context.Context, workerSyncInterval time.Duration) *workerManager {
+func NewManager(ctx context.Context, workerSyncInterval time.Duration, minAvailableSpace int) *workerManager {
 	sbClient, err := newSupabaseClient()
 	if err != nil {
 		log.Fatalf("Failed to create Supabase client: %v", err)
@@ -56,7 +57,7 @@ func (wm *workerManager) Start() error {
 	log.Print("Starting worker manager...")
 
 	// Query sbWorkers from Supabase with only the columns we need
-	sbWorkers, err := wm.getAllWorkersFromSB()
+	sbWorkers, err := wm.getOnlineWorkersFromSB()
 	if err != nil {
 		return fmt.Errorf("failed to get online workers from Supabase: %w", err)
 	}
@@ -70,14 +71,19 @@ func (wm *workerManager) Start() error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := wm.connectToWorker(sbWorker.WorkerID, sbWorker.Address, sbWorker.GRPCPort); err != nil {
-				log.Printf("Failed to connect to worker %s: %v", sbWorker.WorkerID, err)
+			conn, err := wm.establishWorkerConn(sbWorker.WorkerEndpoint)
+			if err != nil {
+				log.Printf("marking worker offline %s: %v", sbWorker.WorkerID, err)
+				sbWorker.Status = StatusOffline // Set status to offline if connection fails
+				wm.workers[sbWorker.WorkerID] = &sbWorker
 				return
 			}
+			sbWorker.Conn = conn
+			sbWorker.Status = StatusOnline      // Set initial status to online
+			sbWorker.LastHeartbeat = time.Now() // Set initial heartbeat
+
 			// Store worker info in local map if worker is not faulty
 			// not using lock here because this is in Start function
-			sbWorker.Status = StatusOnline // Set initial status to online
-			sbWorker.LastHeartbeat = time.Now() // Set initial heartbeat
 			wm.workers[sbWorker.WorkerID] = &sbWorker
 		}()
 	}
@@ -94,16 +100,14 @@ func (wm *workerManager) Start() error {
 	return nil
 }
 
-// connectToWorker establishes a gRPC connection to a worker
-func (wm *workerManager) connectToWorker(workerID, address string, grpcPort int) error {
-	target := fmt.Sprintf("%s:%d", address, grpcPort)
+// establishWorkerConn establishes a gRPC connection to a worker
+func (wm *workerManager) establishWorkerConn(target string) (*grpc.ClientConn, error) {
 
 	// Create gRPC connection with insecure credentials for now
 	// TODO: Add TLS in production
 	conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Printf("Failed to connect to worker %s at %s: %v", workerID, target, err)
-		return fmt.Errorf("failed to connect to worker %s at %s: %w", workerID, target, err)
+		return nil, err
 	}
 
 	// TODO: Implement actual health check RPC call
@@ -111,28 +115,11 @@ func (wm *workerManager) connectToWorker(workerID, address string, grpcPort int)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	if ok := conn.WaitForStateChange(ctx, connectivity.Idle); !ok {
-		log.Printf("Failed to ping worker %s at %s", workerID, target)
 		conn.Close()
-		return fmt.Errorf("failed to ping worker %s at %s", workerID, target)
+		return nil, fmt.Errorf("ping failed at %s", target)
 	}
 
-	// Store the connection
-	wm.mu.Lock()
-	defer wm.mu.Unlock()
-	if worker, exists := wm.workers[workerID]; exists {
-		// Close any existing connection
-		if worker.Conn != nil {
-			worker.Conn.Close()
-		}
-		worker.Conn = conn
-		worker.Status = StatusOnline
-		log.Printf("Successfully connected to worker %s at %s", workerID, target)
-	} else {
-		// Worker was removed while we were connecting
-		conn.Close()
-	}
-
-	return nil
+	return conn, nil
 }
 
 // startHealthCheckLoop runs periodic health checks on all workers
@@ -169,6 +156,23 @@ func (wm *workerManager) performHealthChecks() {
 	}
 }
 
+// helper function to ping worker grpc server
+func (wm *workerManager) pingWorker(worker *Worker) error {
+	if worker.Conn == nil {
+		return fmt.Errorf("worker %s has no gRPC connection", worker.WorkerID)
+	}
+	_, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// TODO: Implement actual health check RPC call
+	// for now, just wait for the connection to change from idle
+	// if err := worker.Conn.Invoke(ctx, "HealthCheck", &emptypb.Empty{}, &emptypb.Empty{}); err != nil {
+	// 	return fmt.Errorf("health check failed for worker %s: %w", worker.WorkerID, err)
+	// }
+
+	return nil
+}
+
 // Stop stops the worker manager and closes all connections
 func (wm *workerManager) Stop() error {
 	log.Print("Stopping worker manager...")
@@ -191,10 +195,49 @@ func (wm *workerManager) Stop() error {
 }
 
 // RegisterWorker registers a new worker with the manager
-func (wm *workerManager) RegisterWorker(ctx context.Context, workerID, address string, capacity int) error {
+func (wm *workerManager) RegisterWorker(ctx context.Context, workerID, workerEndpoint string, capacity, usedSpace int64) error {
 	// TODO: Implement worker registration
 	// This would insert a new worker into the Supabase database
-	return fmt.Errorf("RegisterWorker not yet implemented")
+	if capacity <= 0 {
+		return fmt.Errorf("invalid capacity: %d", capacity)
+	}
+
+	if usedSpace < 0 || usedSpace > capacity {
+		return fmt.Errorf("invalid used space: %d", usedSpace)
+	}
+
+	if capacity-usedSpace < wm.minAvailableSpace {
+		return fmt.Errorf("worker has %d space < minimum required %d", capacity-usedSpace, wm.minAvailableSpace)
+	}
+
+	worker := &Worker{
+		WorkerID:       workerID,
+		WorkerEndpoint: workerEndpoint,
+		TotalCapacity:  capacity,
+		UsedCapacity:   usedSpace,
+		Status:         StatusOnline,
+		LastHeartbeat:  time.Now(),
+	}
+
+	conn, err := wm.establishWorkerConn(workerEndpoint)
+	if err != nil {
+		return err
+	}
+
+	// Store worker in database
+	if err := wm.upsertWorkerToSB(*worker); err != nil {
+		conn.Close() // Close connection if upsert fails
+		return fmt.Errorf("failed to upsert worker to Supabase: %w", err)
+	}
+
+	worker.Conn = conn
+
+	wm.mu.Lock()
+	defer wm.mu.Unlock()
+
+	wm.workers[workerID] = worker
+
+	return nil
 }
 
 // GetWorker retrieves a worker by ID

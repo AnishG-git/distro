@@ -20,6 +20,7 @@ type OrchestratorConfig struct {
 	SecretThreshold    int           // Shamir's secret sharing threshold
 	SecretShares       int           // Shamir's secret sharing total shares
 	WorkerSyncInterval time.Duration // Interval for worker data sync with Supabase
+	MinAvailableSpace  int         // Minimum available space for workers
 }
 
 // Orchestrator coordinates all components
@@ -35,7 +36,7 @@ type Orchestrator struct {
 // NewOrchestrator creates a new orchestrator with the given configuration
 func NewOrchestrator(config *OrchestratorConfig) *Orchestrator {
 	ctx, cancel := context.WithCancel(context.Background())
-	workerManager := worker.NewManager(ctx, config.WorkerSyncInterval)
+	workerManager := worker.NewManager(ctx, config.WorkerSyncInterval, config.MinAvailableSpace)
 
 	if err := workerManager.Start(); err != nil {
 		log.Fatalf("Failed to start worker manager: %v", err)

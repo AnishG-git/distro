@@ -6,21 +6,26 @@ option go_package = "pkg/rpc/worker";
 
 message ShardEnvelope {
   string shard_id  = 1;
-  string key_id    = 2;
-  bytes  nonce     = 3;
-  bytes  cipher    = 4;
-  bytes  mac       = 5;
+  bytes  nonce     = 2;
+  bytes  cipher    = 3;
+  bytes  mac       = 4;
 }
 
-message Ack {
-  bool ok = 1;
+message StorageStats {
+  int64 total_capacity = 2;
+  int64 used_capacity  = 3;
 }
 
 message ShardRequest {
   string shard_id = 1;
 }
 
+message PingRequest {
+  string ping = 1;
+}
+
 service Worker {
-  rpc StoreShard (ShardEnvelope) returns (Ack);
+  rpc StoreShard (ShardEnvelope) returns (StorageStats);
   rpc FetchShard (ShardRequest)  returns (ShardEnvelope);
+  rpc Ping (PingRequest) returns (StorageStats);
 }

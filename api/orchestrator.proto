@@ -1,11 +1,11 @@
 syntax = "proto3";
 
-package orc;
+package rpc;
 
 option go_package = "pkg/rpc/orchestrator";
 
 // OrchestratorService handles communication between workers and the orchestrator
-service OrchestratorService {
+service Orchestrator {
   // Worker lifecycle management
   rpc Register(RegisterRequest) returns (RegisterResponse);
   rpc SendHeartbeat(HeartbeatRequest) returns (HeartbeatResponse);
@@ -14,16 +14,14 @@ service OrchestratorService {
 
 // Worker registration messages
 message RegisterRequest {
-  string address = 1;
-  int32 port = 2; // gRPC port for the worker
+  string worker_id = 1; // Unique identifier for the worker
+  string worker_endpoint = 2; // gRPC endpoint of the worker
   int64 total_capacity = 3;
   int64 used_space = 4;
 }
 
 message RegisterResponse {
-  bool success = 1;
-  string worker_id = 2; // Unique identifier for the worker
-  string message = 3;
+  bool success = 1; // Success bool
 }
 
 message HeartbeatRequest {

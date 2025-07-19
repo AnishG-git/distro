@@ -21,6 +21,7 @@ func main() {
 		SecretThreshold:    2,
 		SecretShares:       5,
 		WorkerSyncInterval: 2 * time.Minute,
+		MinAvailableSpace:  20, // Minimum available space for workers
 	}
 
 	service := orchestrator.NewService(config)

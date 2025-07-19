@@ -5,6 +5,6 @@ import (
 )
 
 type OrchestratorGrpcServer struct {
-	pb.UnimplementedOrchestratorServiceServer
+	pb.UnimplementedOrchestratorServer
 }
 

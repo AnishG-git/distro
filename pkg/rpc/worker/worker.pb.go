@@ -24,10 +24,9 @@ const (
 type ShardEnvelope struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ShardId       string                 `protobuf:"bytes,1,opt,name=shard_id,json=shardId,proto3" json:"shard_id,omitempty"`
-	KeyId         string                 `protobuf:"bytes,2,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
-	Nonce         []byte                 `protobuf:"bytes,3,opt,name=nonce,proto3" json:"nonce,omitempty"`
-	Cipher        []byte                 `protobuf:"bytes,4,opt,name=cipher,proto3" json:"cipher,omitempty"`
-	Mac           []byte                 `protobuf:"bytes,5,opt,name=mac,proto3" json:"mac,omitempty"`
+	Nonce         []byte                 `protobuf:"bytes,2,opt,name=nonce,proto3" json:"nonce,omitempty"`
+	Cipher        []byte                 `protobuf:"bytes,3,opt,name=cipher,proto3" json:"cipher,omitempty"`
+	Mac           []byte                 `protobuf:"bytes,4,opt,name=mac,proto3" json:"mac,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -69,13 +68,6 @@ func (x *ShardEnvelope) GetShardId() string {
 	return ""
 }
 
-func (x *ShardEnvelope) GetKeyId() string {
-	if x != nil {
-		return x.KeyId
-	}
-	return ""
-}
-
 func (x *ShardEnvelope) GetNonce() []byte {
 	if x != nil {
 		return x.Nonce
@@ -97,27 +89,28 @@ func (x *ShardEnvelope) GetMac() []byte {
 	return nil
 }
 
-type Ack struct {
+type StorageStats struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	TotalCapacity int64                  `protobuf:"varint,2,opt,name=total_capacity,json=totalCapacity,proto3" json:"total_capacity,omitempty"`
+	UsedCapacity  int64                  `protobuf:"varint,3,opt,name=used_capacity,json=usedCapacity,proto3" json:"used_capacity,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *Ack) Reset() {
-	*x = Ack{}
+func (x *StorageStats) Reset() {
+	*x = StorageStats{}
 	mi := &file_api_worker_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Ack) String() string {
+func (x *StorageStats) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Ack) ProtoMessage() {}
+func (*StorageStats) ProtoMessage() {}
 
-func (x *Ack) ProtoReflect() protoreflect.Message {
+func (x *StorageStats) ProtoReflect() protoreflect.Message {
 	mi := &file_api_worker_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -129,16 +122,23 @@ func (x *Ack) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Ack.ProtoReflect.Descriptor instead.
-func (*Ack) Descriptor() ([]byte, []int) {
+// Deprecated: Use StorageStats.ProtoReflect.Descriptor instead.
+func (*StorageStats) Descriptor() ([]byte, []int) {
 	return file_api_worker_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *Ack) GetOk() bool {
+func (x *StorageStats) GetTotalCapacity() int64 {
 	if x != nil {
-		return x.Ok
+		return x.TotalCapacity
 	}
-	return false
+	return 0
+}
+
+func (x *StorageStats) GetUsedCapacity() int64 {
+	if x != nil {
+		return x.UsedCapacity
+	}
+	return 0
 }
 
 type ShardRequest struct {
@@ -185,26 +185,73 @@ func (x *ShardRequest) GetShardId() string {
 	return ""
 }
 
+type PingRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ping          string                 `protobuf:"bytes,1,opt,name=ping,proto3" json:"ping,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PingRequest) Reset() {
+	*x = PingRequest{}
+	mi := &file_api_worker_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PingRequest) ProtoMessage() {}
+
+func (x *PingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_worker_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PingRequest.ProtoReflect.Descriptor instead.
+func (*PingRequest) Descriptor() ([]byte, []int) {
+	return file_api_worker_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *PingRequest) GetPing() string {
+	if x != nil {
+		return x.Ping
+	}
+	return ""
+}
+
 var File_api_worker_proto protoreflect.FileDescriptor
 
 const file_api_worker_proto_rawDesc = "" +
 	"\n" +
-	"\x10api/worker.proto\x12\x03rpc\"\x81\x01\n" +
+	"\x10api/worker.proto\x12\x03rpc\"j\n" +
 	"\rShardEnvelope\x12\x19\n" +
-	"\bshard_id\x18\x01 \x01(\tR\ashardId\x12\x15\n" +
-	"\x06key_id\x18\x02 \x01(\tR\x05keyId\x12\x14\n" +
-	"\x05nonce\x18\x03 \x01(\fR\x05nonce\x12\x16\n" +
-	"\x06cipher\x18\x04 \x01(\fR\x06cipher\x12\x10\n" +
-	"\x03mac\x18\x05 \x01(\fR\x03mac\"\x15\n" +
-	"\x03Ack\x12\x0e\n" +
-	"\x02ok\x18\x01 \x01(\bR\x02ok\")\n" +
+	"\bshard_id\x18\x01 \x01(\tR\ashardId\x12\x14\n" +
+	"\x05nonce\x18\x02 \x01(\fR\x05nonce\x12\x16\n" +
+	"\x06cipher\x18\x03 \x01(\fR\x06cipher\x12\x10\n" +
+	"\x03mac\x18\x04 \x01(\fR\x03mac\"Z\n" +
+	"\fStorageStats\x12%\n" +
+	"\x0etotal_capacity\x18\x02 \x01(\x03R\rtotalCapacity\x12#\n" +
+	"\rused_capacity\x18\x03 \x01(\x03R\fusedCapacity\")\n" +
 	"\fShardRequest\x12\x19\n" +
-	"\bshard_id\x18\x01 \x01(\tR\ashardId2i\n" +
-	"\x06Worker\x12*\n" +
+	"\bshard_id\x18\x01 \x01(\tR\ashardId\"!\n" +
+	"\vPingRequest\x12\x12\n" +
+	"\x04ping\x18\x01 \x01(\tR\x04ping2\x9f\x01\n" +
+	"\x06Worker\x123\n" +
 	"\n" +
-	"StoreShard\x12\x12.rpc.ShardEnvelope\x1a\b.rpc.Ack\x123\n" +
+	"StoreShard\x12\x12.rpc.ShardEnvelope\x1a\x11.rpc.StorageStats\x123\n" +
 	"\n" +
-	"FetchShard\x12\x11.rpc.ShardRequest\x1a\x12.rpc.ShardEnvelopeB\x10Z\x0epkg/rpc/workerb\x06proto3"
+	"FetchShard\x12\x11.rpc.ShardRequest\x1a\x12.rpc.ShardEnvelope\x12+\n" +
+	"\x04Ping\x12\x10.rpc.PingRequest\x1a\x11.rpc.StorageStatsB\x10Z\x0epkg/rpc/workerb\x06proto3"
 
 var (
 	file_api_worker_proto_rawDescOnce sync.Once
@@ -218,19 +265,22 @@ func file_api_worker_proto_rawDescGZIP() []byte {
 	return file_api_worker_proto_rawDescData
 }
 
-var file_api_worker_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_api_worker_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_api_worker_proto_goTypes = []any{
 	(*ShardEnvelope)(nil), // 0: rpc.ShardEnvelope
-	(*Ack)(nil),           // 1: rpc.Ack
+	(*StorageStats)(nil),  // 1: rpc.StorageStats
 	(*ShardRequest)(nil),  // 2: rpc.ShardRequest
+	(*PingRequest)(nil),   // 3: rpc.PingRequest
 }
 var file_api_worker_proto_depIdxs = []int32{
 	0, // 0: rpc.Worker.StoreShard:input_type -> rpc.ShardEnvelope
 	2, // 1: rpc.Worker.FetchShard:input_type -> rpc.ShardRequest
-	1, // 2: rpc.Worker.StoreShard:output_type -> rpc.Ack
-	0, // 3: rpc.Worker.FetchShard:output_type -> rpc.ShardEnvelope
-	2, // [2:4] is the sub-list for method output_type
-	0, // [0:2] is the sub-list for method input_type
+	3, // 2: rpc.Worker.Ping:input_type -> rpc.PingRequest
+	1, // 3: rpc.Worker.StoreShard:output_type -> rpc.StorageStats
+	0, // 4: rpc.Worker.FetchShard:output_type -> rpc.ShardEnvelope
+	1, // 5: rpc.Worker.Ping:output_type -> rpc.StorageStats
+	3, // [3:6] is the sub-list for method output_type
+	0, // [0:3] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -247,7 +297,7 @@ func file_api_worker_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_worker_proto_rawDesc), len(file_api_worker_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

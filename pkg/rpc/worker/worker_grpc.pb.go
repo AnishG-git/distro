@@ -21,14 +21,16 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	Worker_StoreShard_FullMethodName = "/rpc.Worker/StoreShard"
 	Worker_FetchShard_FullMethodName = "/rpc.Worker/FetchShard"
+	Worker_Ping_FullMethodName       = "/rpc.Worker/Ping"
 )
 
 // WorkerClient is the client API for Worker service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type WorkerClient interface {
-	StoreShard(ctx context.Context, in *ShardEnvelope, opts ...grpc.CallOption) (*Ack, error)
+	StoreShard(ctx context.Context, in *ShardEnvelope, opts ...grpc.CallOption) (*StorageStats, error)
 	FetchShard(ctx context.Context, in *ShardRequest, opts ...grpc.CallOption) (*ShardEnvelope, error)
+	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*StorageStats, error)
 }
 
 type workerClient struct {
@@ -39,9 +41,9 @@ func NewWorkerClient(cc grpc.ClientConnInterface) WorkerClient {
 	return &workerClient{cc}
 }
 
-func (c *workerClient) StoreShard(ctx context.Context, in *ShardEnvelope, opts ...grpc.CallOption) (*Ack, error) {
+func (c *workerClient) StoreShard(ctx context.Context, in *ShardEnvelope, opts ...grpc.CallOption) (*StorageStats, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Ack)
+	out := new(StorageStats)
 	err := c.cc.Invoke(ctx, Worker_StoreShard_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -59,12 +61,23 @@ func (c *workerClient) FetchShard(ctx context.Context, in *ShardRequest, opts ..
 	return out, nil
 }
 
+func (c *workerClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*StorageStats, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StorageStats)
+	err := c.cc.Invoke(ctx, Worker_Ping_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WorkerServer is the server API for Worker service.
 // All implementations must embed UnimplementedWorkerServer
 // for forward compatibility.
 type WorkerServer interface {
-	StoreShard(context.Context, *ShardEnvelope) (*Ack, error)
+	StoreShard(context.Context, *ShardEnvelope) (*StorageStats, error)
 	FetchShard(context.Context, *ShardRequest) (*ShardEnvelope, error)
+	Ping(context.Context, *PingRequest) (*StorageStats, error)
 	mustEmbedUnimplementedWorkerServer()
 }
 
@@ -75,11 +88,14 @@ type WorkerServer interface {
 // pointer dereference when methods are called.
 type UnimplementedWorkerServer struct{}
 
-func (UnimplementedWorkerServer) StoreShard(context.Context, *ShardEnvelope) (*Ack, error) {
+func (UnimplementedWorkerServer) StoreShard(context.Context, *ShardEnvelope) (*StorageStats, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method StoreShard not implemented")
 }
 func (UnimplementedWorkerServer) FetchShard(context.Context, *ShardRequest) (*ShardEnvelope, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FetchShard not implemented")
+}
+func (UnimplementedWorkerServer) Ping(context.Context, *PingRequest) (*StorageStats, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
 }
 func (UnimplementedWorkerServer) mustEmbedUnimplementedWorkerServer() {}
 func (UnimplementedWorkerServer) testEmbeddedByValue()                {}
@@ -138,6 +154,24 @@ func _Worker_FetchShard_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Worker_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Worker_Ping_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerServer).Ping(ctx, req.(*PingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Worker_ServiceDesc is the grpc.ServiceDesc for Worker service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -152,6 +186,10 @@ var Worker_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FetchShard",
 			Handler:    _Worker_FetchShard_Handler,
+		},
+		{
+			MethodName: "Ping",
+			Handler:    _Worker_Ping_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
