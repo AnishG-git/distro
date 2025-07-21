@@ -3,7 +3,6 @@ package shard
 import (
 	"bytes"
 	"context"
-	"strings"
 	"testing"
 
 	"distro.lol/pkg/crypto"
@@ -48,48 +47,6 @@ func TestShardManager_CreateEncryptedShards(t *testing.T) {
 	}
 
 	t.Logf("Successfully created %d shards with epoch %s", len(encryptedShards), currentEpoch)
-}
-
-func TestShardManager_CreateEncryptedShardsFromReader(t *testing.T) {
-	masterKey, err := crypto.GenerateRandomKey()
-	if err != nil {
-		t.Fatalf("Failed to generate master key: %v", err)
-	}
-
-	ctx := context.Background()
-	sm := NewManager(ctx, masterKey)
-
-	originalData := []byte("This is a test for CreateEncryptedShardsFromReader function.")
-	reader := bytes.NewReader(originalData)
-	n, k := 5, 3
-
-	// Test CreateEncryptedShardsFromReader
-	encryptedShards, currentEpoch, err := sm.CreateEncryptedShardsFromReader(reader, n, k)
-	if err != nil {
-		t.Fatalf("CreateEncryptedShardsFromReader failed: %v", err)
-	}
-
-	// Assert correct number of shards
-	if len(encryptedShards) != n {
-		t.Errorf("Expected %d shards, got %d", n, len(encryptedShards))
-	}
-
-	// Assert all shards are non-nil and have data
-	for i, shard := range encryptedShards {
-		if shard == nil {
-			t.Errorf("Shard %d is nil", i)
-		}
-		if len(shard) == 0 {
-			t.Errorf("Shard %d is empty", i)
-		}
-	}
-
-	// Assert epoch is returned
-	if currentEpoch == "" {
-		t.Error("Expected non-empty epoch")
-	}
-
-	t.Logf("Successfully created %d shards from reader with epoch %s", len(encryptedShards), currentEpoch)
 }
 
 func TestShardManager_ReconstructEncryptedShards(t *testing.T) {
@@ -138,51 +95,6 @@ func TestShardManager_ReconstructEncryptedShards(t *testing.T) {
 	t.Logf("Successfully reconstructed %d bytes from shards", len(reconstructed))
 }
 
-func TestShardManager_ReconstructEncryptedShardsToWriter(t *testing.T) {
-	masterKey, err := crypto.GenerateRandomKey()
-	if err != nil {
-		t.Fatalf("Failed to generate master key: %v", err)
-	}
-
-	ctx := context.Background()
-	sm := NewManager(ctx, masterKey)
-
-	originalData := []byte("This is a test for ReconstructEncryptedShardsToWriter function.")
-	n, k := 8, 5
-
-	// First create shards
-	encryptedShards, currentEpoch, err := sm.CreateEncryptedShards(originalData, n, k)
-	if err != nil {
-		t.Fatalf("Failed to create encrypted shards: %v", err)
-	}
-
-	// Test ReconstructEncryptedShardsToWriter
-	var buf bytes.Buffer
-	err = sm.ReconstructEncryptedShardsToWriter(encryptedShards, currentEpoch, n, k, &buf)
-	if err != nil {
-		t.Fatalf("ReconstructEncryptedShardsToWriter failed: %v", err)
-	}
-
-	// Assert reconstructed data matches original
-	reconstructed := buf.Bytes()
-	if !bytes.Equal(reconstructed, originalData) {
-		t.Errorf("Reconstructed data does not match original.\nOriginal: %q\nReconstructed: %q", originalData, reconstructed)
-	}
-
-	// Test with a string writer (different io.Writer implementation)
-	var strBuilder strings.Builder
-	err = sm.ReconstructEncryptedShardsToWriter(encryptedShards, currentEpoch, n, k, &strBuilder)
-	if err != nil {
-		t.Fatalf("ReconstructEncryptedShardsToWriter with strings.Builder failed: %v", err)
-	}
-
-	if strBuilder.String() != string(originalData) {
-		t.Errorf("Reconstructed string does not match original.\nOriginal: %q\nReconstructed: %q", originalData, strBuilder.String())
-	}
-
-	t.Logf("Successfully wrote %d bytes to writer", len(reconstructed))
-}
-
 func TestShardManager_EndToEndFlow(t *testing.T) {
 	masterKey, err := crypto.GenerateRandomKey()
 	if err != nil {
@@ -209,23 +121,6 @@ func TestShardManager_EndToEndFlow(t *testing.T) {
 
 	if !bytes.Equal(reconstructed, originalData) {
 		t.Errorf("End-to-end flow failed: data mismatch")
-	}
-
-	// Test the reader -> writer flow
-	reader := bytes.NewReader(originalData)
-	encryptedShards2, currentEpoch2, err := sm.CreateEncryptedShardsFromReader(reader, n, k)
-	if err != nil {
-		t.Fatalf("Failed to create encrypted shards from reader: %v", err)
-	}
-
-	var buf bytes.Buffer
-	err = sm.ReconstructEncryptedShardsToWriter(encryptedShards2, currentEpoch2, n, k, &buf)
-	if err != nil {
-		t.Fatalf("Failed to reconstruct to writer: %v", err)
-	}
-
-	if !bytes.Equal(buf.Bytes(), originalData) {
-		t.Errorf("Reader->Writer flow failed: data mismatch")
 	}
 
 	t.Logf("End-to-end test passed for %d byte payload", len(originalData))

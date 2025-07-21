@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto/rand"
 	"fmt"
@@ -30,13 +29,11 @@ func main() {
 		log.Fatal("Threshold shards (k) must be less than total shards (n)")
 	}
 
-	useStreaming := getUserChoice("Use streaming methods? (y/N): ", false)
-
 	fmt.Printf("\nTest Configuration:\n")
 	fmt.Printf("File size: %d MB\n", fileSize/(1024*1024))
 	fmt.Printf("Total shards (n): %d\n", n)
 	fmt.Printf("Threshold shards (k): %d\n", k)
-	fmt.Printf("Method: %s\n", getMethodName(useStreaming))
+	fmt.Printf("Method: In-Memory (Byte Slices)\n")
 	fmt.Println()
 
 	// Generate a master key for encryption
@@ -61,36 +58,17 @@ func main() {
 	printMemUsage("After generating data")
 	fmt.Println()
 
-	var encryptedShards [][]byte
-	var epoch string
-	var err error
-	var createDuration time.Duration
-
-	// Test shard creation based on user choice
-	if useStreaming {
-		fmt.Println("Creating and encrypting shards (streaming)...")
-		printMemUsage("Before streaming shard creation")
-		start = time.Now()
-		reader := bytes.NewReader(fakeData)
-		encryptedShards, epoch, err = shardManager.CreateEncryptedShardsFromReader(reader, n, k)
-		if err != nil {
-			log.Fatal("Failed to create encrypted shards from reader:", err)
-		}
-		createDuration = time.Since(start)
-		fmt.Printf("✓ Created %d encrypted shards using streaming in %v\n", len(encryptedShards), createDuration)
-		printMemUsage("After streaming shard creation")
-	} else {
-		fmt.Println("Creating and encrypting shards (in-memory)...")
-		printMemUsage("Before in-memory shard creation")
-		start = time.Now()
-		encryptedShards, epoch, err = shardManager.CreateEncryptedShards(fakeData, n, k)
-		if err != nil {
-			log.Fatal("Failed to create encrypted shards:", err)
-		}
-		createDuration = time.Since(start)
-		fmt.Printf("✓ Created %d encrypted shards using in-memory method in %v\n", len(encryptedShards), createDuration)
-		printMemUsage("After in-memory shard creation")
+	// Test shard creation (in-memory only)
+	fmt.Println("Creating and encrypting shards (in-memory)...")
+	printMemUsage("Before in-memory shard creation")
+	start = time.Now()
+	encryptedShards, epoch, err := shardManager.CreateEncryptedShards(fakeData, n, k)
+	if err != nil {
+		log.Fatal("Failed to create encrypted shards:", err)
 	}
+	createDuration := time.Since(start)
+	fmt.Printf("✓ Created %d encrypted shards using in-memory method in %v\n", len(encryptedShards), createDuration)
+	printMemUsage("After in-memory shard creation")
 
 	// Calculate shard sizes
 	totalShardSize := 0
@@ -101,31 +79,15 @@ func main() {
 		totalShardSize, float64(totalShardSize-fileSize)/float64(fileSize)*100)
 	fmt.Println()
 
-	// Test reconstruction with all shards based on user choice
-	var reconstructedData []byte
-	var reconstructAllDuration time.Duration
-
-	if useStreaming {
-		fmt.Println("Reconstructing from all shards (streaming)...")
-		start = time.Now()
-		var buf bytes.Buffer
-		err = shardManager.ReconstructEncryptedShardsToWriter(encryptedShards, epoch, n, k, &buf)
-		if err != nil {
-			log.Fatal("Failed to reconstruct to writer:", err)
-		}
-		reconstructedData = buf.Bytes()
-		reconstructAllDuration = time.Since(start)
-		fmt.Printf("✓ Reconstructed %d bytes using streaming in %v\n", len(reconstructedData), reconstructAllDuration)
-	} else {
-		fmt.Println("Reconstructing from all shards (in-memory)...")
-		start = time.Now()
-		reconstructedData, err = shardManager.ReconstructEncryptedShards(encryptedShards, epoch, n, k)
-		if err != nil {
-			log.Fatal("Failed to reconstruct from all shards:", err)
-		}
-		reconstructAllDuration = time.Since(start)
-		fmt.Printf("✓ Reconstructed %d bytes using in-memory method in %v\n", len(reconstructedData), reconstructAllDuration)
+	// Test reconstruction with all shards (in-memory only)
+	fmt.Println("Reconstructing from all shards (in-memory)...")
+	start = time.Now()
+	reconstructedData, err := shardManager.ReconstructEncryptedShards(encryptedShards, epoch, n, k)
+	if err != nil {
+		log.Fatal("Failed to reconstruct from all shards:", err)
 	}
+	reconstructAllDuration := time.Since(start)
+	fmt.Printf("✓ Reconstructed %d bytes using in-memory method in %v\n", len(reconstructedData), reconstructAllDuration)
 
 	// Verify data integrity
 	if !verifyDataIntegrity(fakeData, reconstructedData) {
@@ -141,30 +103,14 @@ func main() {
 		minimalShards[i] = encryptedShards[i]
 	}
 
-	var reconstructedMinimal []byte
-	var reconstructMinDuration time.Duration
-
-	if useStreaming {
-		start = time.Now()
-		var buf bytes.Buffer
-		err = shardManager.ReconstructEncryptedShardsToWriter(minimalShards, epoch, n, k, &buf)
-		if err != nil {
-			log.Fatal("Failed to reconstruct minimal shards to writer:", err)
-		}
-		reconstructedMinimal = buf.Bytes()
-		reconstructMinDuration = time.Since(start)
-		fmt.Printf("✓ Reconstructed %d bytes from %d shards using streaming in %v\n",
-			len(reconstructedMinimal), k, reconstructMinDuration)
-	} else {
-		start = time.Now()
-		reconstructedMinimal, err = shardManager.ReconstructEncryptedShards(minimalShards, epoch, n, k)
-		if err != nil {
-			log.Fatal("Failed to reconstruct from minimal shards:", err)
-		}
-		reconstructMinDuration = time.Since(start)
-		fmt.Printf("✓ Reconstructed %d bytes from %d shards using in-memory method in %v\n",
-			len(reconstructedMinimal), k, reconstructMinDuration)
+	start = time.Now()
+	reconstructedMinimal, err := shardManager.ReconstructEncryptedShards(minimalShards, epoch, n, k)
+	if err != nil {
+		log.Fatal("Failed to reconstruct from minimal shards:", err)
 	}
+	reconstructMinDuration := time.Since(start)
+	fmt.Printf("✓ Reconstructed %d bytes from %d shards using in-memory method in %v\n",
+		len(reconstructedMinimal), k, reconstructMinDuration)
 
 	// Verify minimal reconstruction
 	if !verifyDataIntegrity(fakeData, reconstructedMinimal) {
@@ -175,7 +121,7 @@ func main() {
 
 	// Performance summary
 	fmt.Println("=== Performance Summary ===")
-	fmt.Printf("Method: %s\n", getMethodName(useStreaming))
+	fmt.Printf("Method: In-Memory (Byte Slices)\n")
 	fmt.Printf("File size: %d MB\n", fileSize/(1024*1024))
 	fmt.Printf("Shard creation + encryption: %v (%.2f MB/s)\n",
 		createDuration, float64(fileSize)/(1024*1024)/createDuration.Seconds())
@@ -211,31 +157,6 @@ func getUserInput(prompt string, defaultValue int) int {
 	}
 
 	return value
-}
-
-// getUserChoice prompts the user for a yes/no choice with a default value
-func getUserChoice(prompt string, defaultValue bool) bool {
-	fmt.Print(prompt)
-	reader := bufio.NewReader(os.Stdin)
-	input, err := reader.ReadString('\n')
-	if err != nil {
-		log.Fatal("Error reading input:", err)
-	}
-
-	input = strings.TrimSpace(strings.ToLower(input))
-	if input == "" {
-		return defaultValue
-	}
-
-	return input == "y" || input == "yes"
-}
-
-// getMethodName returns a human-readable method name
-func getMethodName(streaming bool) string {
-	if streaming {
-		return "Streaming (Reader/Writer)"
-	}
-	return "In-Memory (Byte Slices)"
 }
 
 // verifyDataIntegrity checks if two byte slices are identical
