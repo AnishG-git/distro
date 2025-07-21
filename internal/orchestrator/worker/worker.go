@@ -9,7 +9,9 @@ import (
 
 	"github.com/supabase-community/supabase-go"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 
 	pbw "distro.lol/pkg/rpc/worker"
 )
@@ -68,24 +70,23 @@ func (wm *workerManager) Start() error {
 	wg := sync.WaitGroup{}
 
 	for _, sbWorker := range sbWorkers {
+		wm.workers[sbWorker.WorkerID] = &sbWorker
+	}
+
+	for workerID, worker := range wm.workers {
 		// Establish gRPC connection to worker (async)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			conn, err := wm.establishWorkerConn(sbWorker.WorkerEndpoint)
+			conn, err := wm.getOrCreateWorkerConn(workerID, worker.WorkerEndpoint)
 			if err != nil {
-				log.Printf("marking worker offline %s: %v", sbWorker.WorkerID, err)
-				sbWorker.Status = StatusOffline // Set status to offline if connection fails
-				wm.workers[sbWorker.WorkerID] = &sbWorker
+				log.Printf("marking worker offline %s: %v", workerID, err)
+				worker.Status = StatusOffline // Set status to offline if connection fails
 				return
 			}
-			sbWorker.Conn = conn
-			sbWorker.Status = StatusOnline      // Set initial status to online
-			sbWorker.LastHeartbeat = time.Now() // Set initial heartbeat
-
-			// Store worker info in local map if worker is not faulty
-			// not using lock here because this is in Start function
-			wm.workers[sbWorker.WorkerID] = &sbWorker
+			worker.Conn = conn
+			worker.Status = StatusOnline      // Set initial status to online
+			worker.LastHeartbeat = time.Now() // Set initial heartbeat
 		}()
 	}
 
@@ -101,28 +102,54 @@ func (wm *workerManager) Start() error {
 	return nil
 }
 
-// establishWorkerConn establishes a gRPC connection to a worker
-func (wm *workerManager) establishWorkerConn(target string) (*grpc.ClientConn, error) {
+// getOrCreateWorkerConn establishes a gRPC connection to a worker
+func (wm *workerManager) getOrCreateWorkerConn(workerID, target string) (*grpc.ClientConn, error) {
+	var conn *grpc.ClientConn
 
-	// Create gRPC connection with insecure credentials for now
-	// TODO: Add TLS in production
-	conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, err
+	wm.mu.RLock()
+	if worker, ok := wm.workers[workerID]; ok {
+		conn = worker.Conn
+	}
+	wm.mu.RUnlock()
+
+	if conn == nil {
+		opts := []grpc.DialOption{
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithKeepaliveParams(
+				keepalive.ClientParameters{
+					Time:                10 * time.Second, // Ping every 10 seconds
+					Timeout:             3 * time.Second,  // Wait 3 seconds for ping
+					PermitWithoutStream: true,
+				}),
+		}
+
+		newConn, err := grpc.NewClient(target, opts...)
+		if err != nil {
+			return nil, err
+		}
+
+		conn = newConn
 	}
 
-	// ping worker
-	capacity, usedSpace, err := wm.retrieveWorkerStats(conn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to ping worker at %s: %w", target, err)
-	}
-	log.Printf("Worker %s is online with capacity %d and used space %d", target, capacity, usedSpace)
+	// log.Printf("Worker %s is online with capacity %d and used space %d", target, capacity, usedSpace)
 	return conn, nil
+}
+
+
+func isAlive(conn *grpc.ClientConn) bool {
+	if conn == nil {
+		return false
+	}
+	state := conn.GetState()
+	if state == connectivity.Shutdown || state == connectivity.TransientFailure {
+		return false
+	}
+	return true
 }
 
 // startHealthCheckLoop runs periodic health checks on all workers
 func (wm *workerManager) startHealthCheckLoop() {
-	ticker := time.NewTicker(30 * time.Second) // Health check every 30 seconds
+	ticker := time.NewTicker(10 * time.Second) // Health check every 10 seconds
 	defer ticker.Stop()
 
 	for {
@@ -131,6 +158,7 @@ func (wm *workerManager) startHealthCheckLoop() {
 			log.Print("Health check loop stopped")
 			return
 		case <-ticker.C:
+			log.Print("Performing health checks on workers...")
 			wm.performHealthChecks()
 		}
 	}
@@ -140,17 +168,21 @@ func (wm *workerManager) startHealthCheckLoop() {
 func (wm *workerManager) performHealthChecks() {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
-	now := time.Now()
 	for workerID, worker := range wm.workers {
-		healthy := worker.LastHeartbeat.Add(45 * time.Second).After(now)
-		newStatus := StatusOffline
-		if healthy {
-			newStatus = StatusOnline
+		// healthy := worker.LastHeartbeat.Add(45 * time.Second).After(now)
+		// newStatus := StatusOffline
+		// if healthy {
+		// 	newStatus = StatusOnline
+		// }
+		// if worker.Status != newStatus {
+		// 	worker.Status = newStatus
+		// 	log.Printf("Health Check: Worker %s status changed to %v", workerID, newStatus)
+		// }
+		if !isAlive(worker.Conn) {
+			log.Printf("Worker %s is offline, changing status", workerID)
+			worker.Status = StatusOffline
 		}
-		if worker.Status != newStatus {
-			worker.Status = newStatus
-			log.Printf("Health Check: Worker %s status changed to %v", workerID, newStatus)
-		}
+		log.Printf("Worker %s is %s and has a conn with status %s", workerID, worker.Status, worker.Conn.GetState().String())
 	}
 }
 
@@ -161,7 +193,7 @@ func (wm *workerManager) retrieveWorkerStats(conn *grpc.ClientConn) (int64, int6
 		return 0, 0, fmt.Errorf("worker has no gRPC connection")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	stats, err := pbw.NewWorkerClient(conn).Ping(ctx, &pbw.PingRequest{
@@ -221,7 +253,8 @@ func (wm *workerManager) RegisterWorker(ctx context.Context, workerID, workerEnd
 		LastHeartbeat:  time.Now(),
 	}
 
-	conn, err := wm.establishWorkerConn(workerEndpoint)
+
+	conn, err := wm.getOrCreateWorkerConn(worker.WorkerID, worker.WorkerEndpoint)
 	if err != nil {
 		return err
 	}
@@ -238,6 +271,7 @@ func (wm *workerManager) RegisterWorker(ctx context.Context, workerID, workerEnd
 	defer wm.mu.Unlock()
 
 	wm.workers[workerID] = worker
+
 
 	return nil
 }

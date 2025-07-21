@@ -3,8 +3,8 @@ package shard
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
-	"sync"
 	"time"
 
 	"distro.lol/pkg/crypto"
@@ -14,13 +14,16 @@ import (
 // Manager defines the interface for shard management
 type Manager interface {
 	CreateEncryptedShards(data []byte, n, k int) ([][]byte, string, error)
+	CreateEncryptedShardsFromReader(reader io.Reader, n, k int) ([][]byte, string, error)
 	ReconstructEncryptedShards(encryptedShards [][]byte, epoch string, n, k int) ([]byte, error)
+	ReconstructEncryptedShardsToWriter(encryptedShards [][]byte, epoch string, n, k int, writer io.Writer) error
 }
 
 // shardManager handles shard creation, encryption, and decryption
 type shardManager struct {
 	masterKey []byte
 	ctx       context.Context
+	chunkSize int // Size of chunks to read at a time
 }
 
 // NewManager creates a new shard manager that satisfies the Manager interface
@@ -28,193 +31,213 @@ func NewManager(ctx context.Context, masterKey []byte) *shardManager {
 	return &shardManager{
 		masterKey: masterKey,
 		ctx:       ctx,
+		chunkSize: 1024 * 1024, // 1MB chunks by default
 	}
 }
 
-// CreateShards splits data into Reed-Solomon encoded shards
-func (sm *shardManager) CreateEncryptedShards(data []byte, n, k int) ([][]byte, string, error) {
+// CreateEncryptedShardsFromReader creates shards from an io.Reader using streaming but compatible with existing format
+func (sm *shardManager) CreateEncryptedShardsFromReader(reader io.Reader, n, k int) ([][]byte, string, error) {
+	currentEpoch := getCurrentEpoch()
+	epochKey := crypto.DeriveEpochKey(sm.masterKey, currentEpoch)
+
+	// Read all data (streaming benefit comes from not holding intermediate encrypted chunks)
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read data: %w", err)
+	}
+
+	// Use standard single-chunk encryption for compatibility
+	nonce, ciphertext, tag, err := crypto.Encrypt(data, epochKey)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to encrypt original data: %w", err)
+	}
+
+	log.Printf("Encrypted original file (%d bytes) into %d bytes of ciphertext using streaming", len(data), len(ciphertext))
+
+	// Combine nonce + ciphertext + tag into single encrypted blob
+	encryptedData := make([]byte, len(nonce)+len(ciphertext)+len(tag))
+	copy(encryptedData, nonce)
+	copy(encryptedData[len(nonce):], ciphertext)
+	copy(encryptedData[len(nonce)+len(ciphertext):], tag)
+
+	// Prepend encrypted data length (8 bytes) to preserve exact length for reconstruction
+	dataWithLength := make([]byte, 8+len(encryptedData))
+
+	// Store length as big-endian 64-bit integer
+	dataWithLength[0] = byte(len(encryptedData) >> 56)
+	dataWithLength[1] = byte(len(encryptedData) >> 48)
+	dataWithLength[2] = byte(len(encryptedData) >> 40)
+	dataWithLength[3] = byte(len(encryptedData) >> 32)
+	dataWithLength[4] = byte(len(encryptedData) >> 24)
+	dataWithLength[5] = byte(len(encryptedData) >> 16)
+	dataWithLength[6] = byte(len(encryptedData) >> 8)
+	dataWithLength[7] = byte(len(encryptedData))
+	copy(dataWithLength[8:], encryptedData)
+
+	// Now create Reed-Solomon encoder and split encrypted data into shards
 	encoder, err := reedsol.NewEncoder(k, n)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to create Reed-Solomon encoder: %w", err)
 	}
 
-	// Prepend original data length (8 bytes) to preserve exact length
-	dataWithLength := make([]byte, 8+len(data))
+	shards, err := encoder.Encode(dataWithLength)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to encode encrypted data into shards: %w", err)
+	}
+
+	log.Printf("Created %d shards using streaming interface (n=%d, k=%d)", len(shards), n, k)
+	return shards, currentEpoch, nil
+}
+
+// createEncryptedShardsInternal handles the core logic for both methods
+func (sm *shardManager) createEncryptedShardsInternal(data []byte, n, k int, currentEpoch string) ([][]byte, string, error) {
+	// First, encrypt the entire original file
+	epochKey := crypto.DeriveEpochKey(sm.masterKey, currentEpoch)
+	nonce, ciphertext, tag, err := crypto.Encrypt(data, epochKey)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to encrypt original data: %w", err)
+	}
+
+	log.Printf("Encrypted original file (%d bytes) into %d bytes of ciphertext", len(data), len(ciphertext))
+
+	// Combine nonce + ciphertext + tag into single encrypted blob
+	encryptedData := make([]byte, len(nonce)+len(ciphertext)+len(tag))
+	copy(encryptedData, nonce)
+	copy(encryptedData[len(nonce):], ciphertext)
+	copy(encryptedData[len(nonce)+len(ciphertext):], tag)
+
+	// Prepend encrypted data length (8 bytes) to preserve exact length for reconstruction
+	dataWithLength := make([]byte, 8+len(encryptedData))
 
 	// Store length as big-endian 64-bit integer
-	dataWithLength[0] = byte(len(data) >> 56)
-	dataWithLength[1] = byte(len(data) >> 48)
-	dataWithLength[2] = byte(len(data) >> 40)
-	dataWithLength[3] = byte(len(data) >> 32)
-	dataWithLength[4] = byte(len(data) >> 24)
-	dataWithLength[5] = byte(len(data) >> 16)
-	dataWithLength[6] = byte(len(data) >> 8)
-	dataWithLength[7] = byte(len(data))
-	copy(dataWithLength[8:], data)
+	dataWithLength[0] = byte(len(encryptedData) >> 56)
+	dataWithLength[1] = byte(len(encryptedData) >> 48)
+	dataWithLength[2] = byte(len(encryptedData) >> 40)
+	dataWithLength[3] = byte(len(encryptedData) >> 32)
+	dataWithLength[4] = byte(len(encryptedData) >> 24)
+	dataWithLength[5] = byte(len(encryptedData) >> 16)
+	dataWithLength[6] = byte(len(encryptedData) >> 8)
+	dataWithLength[7] = byte(len(encryptedData))
+	copy(dataWithLength[8:], encryptedData)
+
+	// Now create Reed-Solomon encoder and split encrypted data into shards
+	encoder, err := reedsol.NewEncoder(k, n)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create Reed-Solomon encoder: %w", err)
+	}
 
 	shards, err := encoder.Encode(dataWithLength)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to encode data into shards: %w", err)
+		return nil, "", fmt.Errorf("failed to encode encrypted data into shards: %w", err)
 	}
 
-	log.Printf("Created %d shards from %d bytes of data (n=%d, k=%d)",
-		len(shards), len(data), n, k)
-
-	currentEpoch := getCurrentEpoch()
-
-	// Encrypt shards concurrently
-	encryptedShards := make([][]byte, len(shards))
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(shards))
-
-	for i, shard := range shards {
-		wg.Add(1)
-		go func(index int, shardData []byte) {
-			defer wg.Done()
-
-			nonce, ciphertext, tag, err := sm.encryptShard(shardData, currentEpoch)
-			if err != nil {
-				errChan <- fmt.Errorf("failed to encrypt shard %d: %w", index, err)
-				return
-			}
-
-			// Combine nonce + ciphertext + tag into single encrypted shard
-			encryptedShard := make([]byte, len(nonce)+len(ciphertext)+len(tag))
-			copy(encryptedShard, nonce)
-			copy(encryptedShard[len(nonce):], ciphertext)
-			copy(encryptedShard[len(nonce)+len(ciphertext):], tag)
-
-			encryptedShards[index] = encryptedShard
-		}(i, shard)
-	}
-
-	wg.Wait()
-	close(errChan)
-
-	// Check for any encryption errors
-	if len(errChan) > 0 {
-		return nil, "", <-errChan
-	}
-
-	log.Printf("Successfully encrypted %d shards", len(encryptedShards))
-	return encryptedShards, currentEpoch, nil
+	log.Printf("Created %d shards from encrypted data (n=%d, k=%d)", len(shards), n, k)
+	return shards, currentEpoch, nil
 }
 
-// EncryptShard encrypts a shard using epoch-derived keys
-func (sm *shardManager) encryptShard(data []byte, epoch string) (nonce, ciphertext, tag []byte, err error) {
+// CreateEncryptedShards - keep the original method for backward compatibility
+func (sm *shardManager) CreateEncryptedShards(data []byte, n, k int) ([][]byte, string, error) {
+	currentEpoch := getCurrentEpoch()
+	return sm.createEncryptedShardsInternal(data, n, k, currentEpoch)
+}
+
+// ReconstructEncryptedShardsToWriter reconstructs and decrypts data directly to a writer
+func (sm *shardManager) ReconstructEncryptedShardsToWriter(shards [][]byte, epoch string, n, k int, writer io.Writer) error {
+	// Use the existing reconstruction method and then write to the writer
+	// This provides the streaming interface while maintaining compatibility
+	data, err := sm.ReconstructEncryptedShards(shards, epoch, n, k)
+	if err != nil {
+		return err
+	}
+
+	_, err = writer.Write(data)
+	if err != nil {
+		return fmt.Errorf("failed to write reconstructed data: %w", err)
+	}
+
+	log.Printf("Successfully wrote %d bytes to writer using streaming interface", len(data))
+	return nil
+}
+
+// decryptOriginalData decrypts the reconstructed encrypted data
+func (sm *shardManager) decryptOriginalData(encryptedData []byte, epoch string) ([]byte, error) {
+	const nonceSize = 12 // AES-GCM nonce size
+	const tagSize = 16   // AES-GCM tag size
+
+	if len(encryptedData) < nonceSize+tagSize {
+		return nil, fmt.Errorf("encrypted data too small: got %d bytes, need at least %d",
+			len(encryptedData), nonceSize+tagSize)
+	}
+
+	// Extract nonce, ciphertext, and tag from encrypted data
+	nonce := encryptedData[:nonceSize]
+	ciphertext := encryptedData[nonceSize : len(encryptedData)-tagSize]
+	tag := encryptedData[len(encryptedData)-tagSize:]
+
+	// Derive the epoch key
 	epochKey := crypto.DeriveEpochKey(sm.masterKey, epoch)
 
-	nonce, ciphertext, tag, err = crypto.Encrypt(data, epochKey)
+	// Decrypt the data
+	plaintext, err := crypto.Decrypt(nonce, ciphertext, tag, epochKey)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to encrypt shard: %w", err)
+		return nil, fmt.Errorf("failed to decrypt data: %w", err)
 	}
 
-	return nonce, ciphertext, tag, nil
+	return plaintext, nil
 }
 
-// ReconstructEncryptedShards decrypts shards concurrently and reconstructs the original data
-func (sm *shardManager) ReconstructEncryptedShards(encryptedShards [][]byte, epoch string, n, k int) ([]byte, error) {
-	if len(encryptedShards) < k {
-		return nil, fmt.Errorf("insufficient shards: need at least %d, got %d", k, len(encryptedShards))
+// ReconstructEncryptedShards reconstructs shards and then decrypts the original data
+func (sm *shardManager) ReconstructEncryptedShards(shards [][]byte, epoch string, n, k int) ([]byte, error) {
+	if len(shards) < k {
+		return nil, fmt.Errorf("insufficient shards: need at least %d, got %d", k, len(shards))
 	}
 
-	// Decrypt shards concurrently
-	decryptedShards := make([][]byte, len(encryptedShards))
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(encryptedShards))
+	log.Printf("Starting reconstruction with %d shards", len(shards))
 
-	for i, encryptedShard := range encryptedShards {
-		if encryptedShard == nil {
-			continue // Skip missing shards
-		}
-
-		wg.Add(1)
-		go func(index int, encShard []byte) {
-			defer wg.Done()
-
-			decrypted, err := sm.decryptShard(encShard, epoch)
-			if err != nil {
-				errChan <- fmt.Errorf("failed to decrypt shard %d: %w", index, err)
-				return
-			}
-
-			decryptedShards[index] = decrypted
-		}(i, encryptedShard)
-	}
-
-	wg.Wait()
-	close(errChan)
-
-	// Check for any decryption errors
-	if len(errChan) > 0 {
-		return nil, <-errChan
-	}
-
-	log.Printf("Successfully decrypted %d shards", len(decryptedShards))
-
-	// Reconstruct original data using Reed-Solomon decoder
+	// Reconstruct encrypted data using Reed-Solomon decoder
 	encoder, err := reedsol.NewEncoder(k, n)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Reed-Solomon encoder: %w", err)
 	}
 
-	originalData, err := encoder.Reconstruct(decryptedShards)
+	reconstructedData, err := encoder.Reconstruct(shards)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reconstruct data from shards: %w", err)
 	}
 
-	// Extract the original data length from the first 8 bytes
-	if len(originalData) < 8 {
+	// Extract the encrypted data length from the first 8 bytes
+	if len(reconstructedData) < 8 {
 		return nil, fmt.Errorf("reconstructed data too short to contain length prefix")
 	}
 
 	// Decode length as big-endian 64-bit integer
-	originalLength := int(originalData[0])<<56 |
-		int(originalData[1])<<48 |
-		int(originalData[2])<<40 |
-		int(originalData[3])<<32 |
-		int(originalData[4])<<24 |
-		int(originalData[5])<<16 |
-		int(originalData[6])<<8 |
-		int(originalData[7])
+	encryptedLength := int(reconstructedData[0])<<56 |
+		int(reconstructedData[1])<<48 |
+		int(reconstructedData[2])<<40 |
+		int(reconstructedData[3])<<32 |
+		int(reconstructedData[4])<<24 |
+		int(reconstructedData[5])<<16 |
+		int(reconstructedData[6])<<8 |
+		int(reconstructedData[7])
 
 	// Validate length
-	if originalLength < 0 || originalLength > len(originalData)-8 {
-		return nil, fmt.Errorf("invalid original data length: %d", originalLength)
+	if encryptedLength < 0 || encryptedLength > len(reconstructedData)-8 {
+		return nil, fmt.Errorf("invalid encrypted data length: %d", encryptedLength)
 	}
 
-	// Extract the original data (skip the 8-byte length prefix)
-	actualData := originalData[8 : 8+originalLength]
+	// Extract the encrypted data (skip the 8-byte length prefix)
+	encryptedData := reconstructedData[8 : 8+encryptedLength]
 
-	log.Printf("Successfully reconstructed %d bytes from %d shards", len(actualData), len(decryptedShards))
-	return actualData, nil
-}
+	log.Printf("Reconstructed %d bytes of encrypted data from shards", len(encryptedData))
 
-// decryptShard decrypts a single encrypted shard
-func (sm *shardManager) decryptShard(encryptedShard []byte, epoch string) ([]byte, error) {
-	const nonceSize = 12 // AES-GCM nonce size
-	const tagSize = 16   // AES-GCM tag size
-
-	if len(encryptedShard) < nonceSize+tagSize {
-		return nil, fmt.Errorf("encrypted shard too small: got %d bytes, need at least %d",
-			len(encryptedShard), nonceSize+tagSize)
-	}
-
-	// Extract nonce, ciphertext, and tag from encrypted shard
-	nonce := encryptedShard[:nonceSize]
-	ciphertext := encryptedShard[nonceSize : len(encryptedShard)-tagSize]
-	tag := encryptedShard[len(encryptedShard)-tagSize:]
-
-	// Derive the epoch key
-	epochKey := crypto.DeriveEpochKey(sm.masterKey, epoch)
-
-	// Decrypt the shard
-	plaintext, err := crypto.Decrypt(nonce, ciphertext, tag, epochKey)
+	// Now decrypt the reconstructed encrypted data
+	decryptedData, err := sm.decryptOriginalData(encryptedData, epoch)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt shard: %w", err)
+		return nil, fmt.Errorf("failed to decrypt reconstructed data: %w", err)
 	}
 
-	return plaintext, nil
+	log.Printf("Successfully decrypted reconstructed data: %d bytes", len(decryptedData))
+	return decryptedData, nil
 }
 
 func getCurrentEpoch() string {

@@ -16,14 +16,14 @@ import (
 
 type worker struct {
 	id                   string
-	addr                 string
+	workerEndpoint       string
 	orchestratorEndpoint string // Endpoint of the orchestrator
 	capacity             int64  // Total capacity of the worker
 	usedSpace            int64  // Used space in the worker
 	pb.UnimplementedWorkerServer
 }
 
-func New(addr string, capacity int64) *worker {
+func New(workerEndpoint string, capacity int64) *worker {
 	// Initialize a new worker with the given target and capacity
 	// TEST - for now we will use an environment variable for the worker ID
 	// In the real service, the worker ID would be the worker's email address after they sign up or some byproduct
@@ -34,7 +34,7 @@ func New(addr string, capacity int64) *worker {
 	// }
 	return &worker{
 		id:                   uuid.NewString(),
-		addr:                 addr,
+		workerEndpoint:       workerEndpoint,
 		capacity:             capacity,
 		orchestratorEndpoint: "127.0.0.1:9090",
 	}
@@ -54,7 +54,7 @@ func (w *worker) Start() error {
 	}
 
 	now := time.Now()
-	
+
 	cli := pbo.NewOrchestratorClient(conn)
 	resp, err := cli.Ping(ctx, &pbo.PingRequest{
 		Message: "ping",
@@ -81,7 +81,7 @@ func (w *worker) Start() error {
 			break
 		}
 		// Wait for the server to be ready
-		log.Printf("Server is ready at %s", w.addr)
+		log.Printf("Server is ready at %s", w.workerEndpoint)
 
 		// Register the worker with the orchestrator
 		if err := w.register(ctx); err != nil {
@@ -98,9 +98,9 @@ func (w *worker) Start() error {
 }
 
 func (w *worker) startServer(ctx context.Context) error {
-	listener, err := net.Listen("tcp", w.addr)
+	listener, err := net.Listen("tcp", w.workerEndpoint)
 	if err != nil {
-		log.Printf("Failed to listen at %s: %v", w.addr, err)
+		log.Printf("Failed to listen at %s: %v", w.workerEndpoint, err)
 		return err
 	}
 
@@ -112,7 +112,7 @@ func (w *worker) startServer(ctx context.Context) error {
 	errChan := make(chan error, 1)
 
 	go func() {
-		log.Printf("Starting gRPC server at %s", w.addr)
+		log.Printf("Starting gRPC server at %s", w.workerEndpoint)
 		errChan <- fmt.Errorf("gRPC server failed: %v", server.Serve(listener))
 	}()
 
@@ -127,7 +127,7 @@ func (w *worker) startServer(ctx context.Context) error {
 }
 
 func (w *worker) checkReadiness() error {
-	conn, err := grpc.NewClient(w.addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(w.workerEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return fmt.Errorf("failed to connect to worker server: %v", err)
 	}
@@ -156,7 +156,7 @@ func (w *worker) register(ctx context.Context) error {
 	// Register the worker with the orchestrator
 	resp, err := client.Register(ctx, &pbo.RegisterRequest{
 		WorkerId:       w.id,
-		WorkerEndpoint: w.addr,
+		WorkerEndpoint: w.workerEndpoint,
 		TotalCapacity:  w.capacity,
 		UsedSpace:      w.usedSpace,
 	})
