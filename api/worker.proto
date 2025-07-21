@@ -6,9 +6,7 @@ option go_package = "pkg/rpc/worker";
 
 message ShardEnvelope {
   string shard_id  = 1;
-  bytes  nonce     = 2;
-  bytes  cipher    = 3;
-  bytes  mac       = 4;
+  bytes  shard = 2;
 }
 
 message StorageStats {

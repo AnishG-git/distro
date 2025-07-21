@@ -78,7 +78,7 @@ func (s *httpServer) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	responseBytes, err := json.Marshal(uploadResponse{objectID: id})
+	responseBytes, err := json.Marshal(uploadResponse{ObjectID: id})
 	if err != nil {
 		http.Error(w, "Failed to create response", http.StatusInternalServerError)
 		return
@@ -101,10 +101,10 @@ func (s *httpServer) handleDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 type uploadRequest struct {
-	filename string `json:"filename"`
-	file     []byte `json:"file"`
+	Filename string `json:"filename"`
+	File     []byte `json:"file"`
 }
 
 type uploadResponse struct {
-	objectID string `json:"object_id"`
+	ObjectID string `json:"object_id"`
 }

@@ -24,9 +24,7 @@ const (
 type ShardEnvelope struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ShardId       string                 `protobuf:"bytes,1,opt,name=shard_id,json=shardId,proto3" json:"shard_id,omitempty"`
-	Nonce         []byte                 `protobuf:"bytes,2,opt,name=nonce,proto3" json:"nonce,omitempty"`
-	Cipher        []byte                 `protobuf:"bytes,3,opt,name=cipher,proto3" json:"cipher,omitempty"`
-	Mac           []byte                 `protobuf:"bytes,4,opt,name=mac,proto3" json:"mac,omitempty"`
+	Shard         []byte                 `protobuf:"bytes,2,opt,name=shard,proto3" json:"shard,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -68,23 +66,9 @@ func (x *ShardEnvelope) GetShardId() string {
 	return ""
 }
 
-func (x *ShardEnvelope) GetNonce() []byte {
+func (x *ShardEnvelope) GetShard() []byte {
 	if x != nil {
-		return x.Nonce
-	}
-	return nil
-}
-
-func (x *ShardEnvelope) GetCipher() []byte {
-	if x != nil {
-		return x.Cipher
-	}
-	return nil
-}
-
-func (x *ShardEnvelope) GetMac() []byte {
-	if x != nil {
-		return x.Mac
+		return x.Shard
 	}
 	return nil
 }
@@ -234,12 +218,10 @@ var File_api_worker_proto protoreflect.FileDescriptor
 const file_api_worker_proto_rawDesc = "" +
 	"\n" +
 	"\x10api/worker.proto\x12\n" +
-	"rpc.worker\"j\n" +
+	"rpc.worker\"@\n" +
 	"\rShardEnvelope\x12\x19\n" +
 	"\bshard_id\x18\x01 \x01(\tR\ashardId\x12\x14\n" +
-	"\x05nonce\x18\x02 \x01(\fR\x05nonce\x12\x16\n" +
-	"\x06cipher\x18\x03 \x01(\fR\x06cipher\x12\x10\n" +
-	"\x03mac\x18\x04 \x01(\fR\x03mac\"Z\n" +
+	"\x05shard\x18\x02 \x01(\fR\x05shard\"Z\n" +
 	"\fStorageStats\x12%\n" +
 	"\x0etotal_capacity\x18\x02 \x01(\x03R\rtotalCapacity\x12#\n" +
 	"\rused_capacity\x18\x03 \x01(\x03R\fusedCapacity\")\n" +

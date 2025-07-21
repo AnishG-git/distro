@@ -74,9 +74,7 @@ func (o *Orchestrator) DistributeFile(ctx context.Context, filebytes []byte, fil
 			// Create shard envelope with metadata
 			envelope := &pbw.ShardEnvelope{
 				ShardId: fmt.Sprintf("%s-shard-%d", objectID, shardIndex),
-				Nonce:   shardData[:12],                    // First 12 bytes are nonce
-				Cipher:  shardData[12 : len(shardData)-16], // Middle bytes are ciphertext
-				Mac:     shardData[len(shardData)-16:],     // Last 16 bytes are auth tag
+				Shard:   shardData,
 			}
 
 			// Store shard on worker

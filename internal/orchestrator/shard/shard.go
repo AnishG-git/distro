@@ -1,6 +1,7 @@
 package shard
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -163,6 +164,158 @@ func (sm *shardManager) ReconstructEncryptedShards(shards [][]byte, epoch string
 
 	log.Printf("Successfully decrypted reconstructed data: %d bytes", len(decryptedData))
 	return decryptedData, nil
+}
+
+func VerifyShards(shards [][]byte, n, k int) error {
+	if len(shards) != n {
+		return fmt.Errorf("invalid number of shards: expected %d, got %d", n, len(shards))
+	}
+
+	// Create Reed-Solomon encoder for verification
+	encoder, err := reedsol.NewEncoder(k, n)
+	if err != nil {
+		return fmt.Errorf("failed to create Reed-Solomon encoder: %w", err)
+	}
+
+	// Check for nil shards and log their indices
+	nilShards := make([]int, 0)
+	validShards := make([][]byte, len(shards))
+	copy(validShards, shards)
+
+	for i, shard := range shards {
+		if shard == nil {
+			nilShards = append(nilShards, i)
+		}
+	}
+
+	if len(nilShards) > 0 {
+		log.Printf("Found nil shards at indices: %v", nilShards)
+	}
+
+	// If we have too many nil shards, we can't verify
+	if len(nilShards) > n-k {
+		return fmt.Errorf("too many missing shards: %d missing, can only tolerate %d", len(nilShards), n-k)
+	}
+
+	// For Reed-Solomon verification, we need to handle nil shards properly
+	// The library expects consistent shard sizes, so we can't directly verify with nils
+	// Instead, we'll use a more sophisticated approach
+
+	validShardCount := 0
+	for _, shard := range shards {
+		if shard != nil {
+			validShardCount++
+		}
+	}
+
+	// Check if we have enough valid shards for verification
+	if validShardCount < k {
+		return fmt.Errorf("insufficient shards for verification: have %d valid shards, need at least %d", validShardCount, k)
+	}
+
+	// For shards without nils, we can use direct verification
+	if len(nilShards) == 0 {
+		isValid, err := encoder.Verify(validShards)
+		if err != nil {
+			return fmt.Errorf("shard verification failed: %w", err)
+		}
+		if !isValid {
+			return fmt.Errorf("shard verification failed: shards are invalid")
+		}
+	} else {
+		// For shards with nils, we need to verify by attempting reconstruction
+		// and checking if it produces consistent results
+		_, err := encoder.Reconstruct(validShards)
+		if err != nil {
+			// Try to identify which specific shards are corrupted
+			corruptedShards := make([]int, 0)
+
+			// Test each non-nil shard individually by setting it to nil and seeing if reconstruction improves
+			for i := 0; i < len(shards); i++ {
+				if shards[i] == nil {
+					continue // Skip already nil shards
+				}
+
+				// Create a copy with this shard set to nil
+				testShards := make([][]byte, len(shards))
+				copy(testShards, shards)
+				testShards[i] = nil
+
+				// Count remaining valid shards
+				remainingValid := 0
+				for _, testShard := range testShards {
+					if testShard != nil {
+						remainingValid++
+					}
+				}
+
+				// If we still have enough shards and reconstruction works without this shard,
+				// then this shard might be corrupted
+				if remainingValid >= k {
+					if _, reconstructErr := encoder.Reconstruct(testShards); reconstructErr == nil {
+						corruptedShards = append(corruptedShards, i)
+					}
+				}
+			}
+
+			if len(corruptedShards) > 0 {
+				log.Printf("Detected corrupted shards at indices: %v", corruptedShards)
+				return fmt.Errorf("shard verification failed: corrupted shards detected at indices %v", corruptedShards)
+			}
+
+			return fmt.Errorf("shard verification failed: %w", err)
+		}
+
+		// Additional verification: try to verify individual groups of shards
+		// If we have corrupted shards, different combinations should give different results
+		if validShardCount > k {
+			// Try reconstruction with different combinations to detect inconsistencies
+			firstReconstructed, err := encoder.Reconstruct(validShards)
+			if err != nil {
+				return fmt.Errorf("shard verification failed during reconstruction: %w", err)
+			}
+
+			// Create alternative shard combinations and see if they produce the same result
+			for i := 0; i < len(shards) && validShardCount > k; i++ {
+				if shards[i] == nil {
+					continue
+				}
+
+				// Create alternative combination by removing one valid shard
+				altShards := make([][]byte, len(shards))
+				copy(altShards, validShards)
+				altShards[i] = nil
+
+				// Count remaining shards
+				altValidCount := 0
+				for _, altShard := range altShards {
+					if altShard != nil {
+						altValidCount++
+					}
+				}
+
+				if altValidCount >= k {
+					altReconstructed, altErr := encoder.Reconstruct(altShards)
+					if altErr == nil {
+						// Compare lengths first (faster)
+						if len(firstReconstructed) != len(altReconstructed) {
+							log.Printf("Detected inconsistent reconstruction - shard %d may be corrupted", i)
+							return fmt.Errorf("shard verification failed: inconsistent reconstruction detected, shard %d may be corrupted", i)
+						}
+
+						// Compare content if lengths match
+						if !bytes.Equal(firstReconstructed, altReconstructed) {
+							log.Printf("Detected inconsistent reconstruction - shard %d may be corrupted", i)
+							return fmt.Errorf("shard verification failed: inconsistent reconstruction detected, shard %d may be corrupted", i)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	log.Printf("Successfully verified %d shards (%d data + %d parity)", n, k, n-k)
+	return nil
 }
 
 func getCurrentEpoch() string {
