@@ -7,12 +7,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/supabase-community/supabase-go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 
+	"distro.lol/internal/storage"
 	pbw "distro.lol/pkg/rpc/worker"
 )
 
@@ -35,42 +35,48 @@ type Manager interface {
 
 type workerManager struct {
 	ctx                context.Context
-	sbClient           *supabase.Client
+	storageManager     storage.Manager
 	mu                 *sync.RWMutex
 	workers            map[string]*Worker // workerID -> Info
 	workerSyncInterval time.Duration
 	minAvailableSpace  int64
 }
 
-func NewManager(ctx context.Context, workerSyncInterval time.Duration, minAvailableSpace int) *workerManager {
-	sbClient, err := newSupabaseClient()
-	if err != nil {
-		log.Fatalf("Failed to create Supabase client: %v", err)
-	}
+func NewManager(ctx context.Context, storageManager storage.Manager, workerSyncInterval time.Duration, minAvailableSpace int64) *workerManager {
 	return &workerManager{
 		ctx:                ctx,
-		sbClient:           sbClient,
+		storageManager:     storageManager,
 		mu:                 &sync.RWMutex{},
 		workers:            make(map[string]*Worker),
 		workerSyncInterval: workerSyncInterval,
+		minAvailableSpace:  minAvailableSpace,
 	}
 }
 
 func (wm *workerManager) Start() error {
 	log.Print("Starting worker manager...")
 
-	// Query sbWorkers from Supabase with only the columns we need
-	sbWorkers, err := wm.getOnlineWorkersFromSB()
+	// Get workers from storage manager
+	workerRecords, err := wm.storageManager.GetOnlineWorkers(wm.ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get online workers from Supabase: %w", err)
+		return fmt.Errorf("failed to get online workers from storage: %w", err)
 	}
 
-	log.Printf("Loaded %d worker(s) from database", len(sbWorkers))
+	log.Printf("Loaded %d worker(s) from database", len(workerRecords))
 
 	wg := sync.WaitGroup{}
 
-	for _, sbWorker := range sbWorkers {
-		wm.workers[sbWorker.WorkerID] = &sbWorker
+	// Convert storage records to internal worker objects
+	for _, record := range workerRecords {
+		worker := &Worker{
+			WorkerID:       record.WorkerID,
+			WorkerEndpoint: record.WorkerEndpoint,
+			TotalCapacity:  record.TotalCapacity,
+			UsedCapacity:   record.UsedCapacity,
+			Status:         StatusFromString(record.Status),
+			LastHeartbeat:  record.LastHeartbeat,
+		}
+		wm.workers[worker.WorkerID] = worker
 	}
 
 	for workerID, worker := range wm.workers {
@@ -95,8 +101,8 @@ func (wm *workerManager) Start() error {
 	// Start background goroutine for health checks
 	go wm.startHealthCheckLoop()
 
-	// background goroutine to sync local map with Supabase
-	go wm.startSupabaseSyncLoop()
+	// background goroutine to sync local map with storage
+	go wm.startStorageSyncLoop()
 
 	log.Print("Worker manager started successfully")
 	return nil
@@ -134,7 +140,6 @@ func (wm *workerManager) getOrCreateWorkerConn(workerID, target string) (*grpc.C
 	// log.Printf("Worker %s is online with capacity %d and used space %d", target, capacity, usedSpace)
 	return conn, nil
 }
-
 
 func isAlive(conn *grpc.ClientConn) bool {
 	if conn == nil {
@@ -228,6 +233,54 @@ func (wm *workerManager) Stop() error {
 	return nil
 }
 
+// startStorageSyncLoop syncs worker data with storage periodically
+func (wm *workerManager) startStorageSyncLoop() {
+	ticker := time.NewTicker(wm.workerSyncInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-wm.ctx.Done():
+			return // Exit if context is done
+		case <-ticker.C:
+			if err := wm.syncWorkersWithStorage(); err != nil {
+				log.Printf("failed to sync local workers map with storage: %v", err)
+			}
+		}
+	}
+}
+
+// syncWorkersWithStorage syncs the local worker map with storage
+func (wm *workerManager) syncWorkersWithStorage() error {
+	wm.mu.Lock()
+
+	// Convert workers map to storage records
+	var records []storage.WorkerRecord
+	for _, worker := range wm.workers {
+		record := storage.WorkerRecord{
+			WorkerID:       worker.WorkerID,
+			WorkerEndpoint: worker.WorkerEndpoint,
+			TotalCapacity:  worker.TotalCapacity,
+			UsedCapacity:   worker.UsedCapacity,
+			Status:         string(worker.Status),
+			LastHeartbeat:  worker.LastHeartbeat,
+			UpdatedAt:      time.Now(),
+		}
+		records = append(records, record)
+	}
+
+	wm.mu.Unlock()
+
+	// Upsert each worker record
+	for _, record := range records {
+		if err := wm.storageManager.UpsertWorker(wm.ctx, record); err != nil {
+			return fmt.Errorf("failed to upsert worker %s: %w", record.WorkerID, err)
+		}
+	}
+
+	log.Println("Successfully synced workers with storage")
+	return nil
+}
+
 // RegisterWorker registers a new worker with the manager
 func (wm *workerManager) RegisterWorker(ctx context.Context, workerID, workerEndpoint string, capacity, usedSpace int64) error {
 	// TODO: Implement worker registration
@@ -253,16 +306,26 @@ func (wm *workerManager) RegisterWorker(ctx context.Context, workerID, workerEnd
 		LastHeartbeat:  time.Now(),
 	}
 
-
 	conn, err := wm.getOrCreateWorkerConn(worker.WorkerID, worker.WorkerEndpoint)
 	if err != nil {
 		return err
 	}
 
-	// Store worker in database
-	if err := wm.upsertWorkerToSB(*worker); err != nil {
+	// Store worker in database using storage manager
+	record := storage.WorkerRecord{
+		WorkerID:       worker.WorkerID,
+		WorkerEndpoint: worker.WorkerEndpoint,
+		TotalCapacity:  worker.TotalCapacity,
+		UsedCapacity:   worker.UsedCapacity,
+		Status:         string(worker.Status),
+		LastHeartbeat:  worker.LastHeartbeat,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+	}
+
+	if err := wm.storageManager.UpsertWorker(ctx, record); err != nil {
 		conn.Close() // Close connection if upsert fails
-		return fmt.Errorf("failed to upsert worker to Supabase: %w", err)
+		return fmt.Errorf("failed to upsert worker to storage: %w", err)
 	}
 
 	worker.Conn = conn
@@ -271,7 +334,6 @@ func (wm *workerManager) RegisterWorker(ctx context.Context, workerID, workerEnd
 	defer wm.mu.Unlock()
 
 	wm.workers[workerID] = worker
-
 
 	return nil
 }

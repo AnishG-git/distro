@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"distro.lol/internal/orchestrator/worker"
+	"distro.lol/internal/storage"
 	pbw "distro.lol/pkg/rpc/worker"
 )
 
@@ -108,8 +109,39 @@ func (o *Orchestrator) DistributeFile(ctx context.Context, filebytes []byte, fil
 		return "", fmt.Errorf("insufficient shard placements: need %d, got %d", k, successCount)
 	}
 
-	// TODO: Store metadata in database for later retrieval
-	// This would include: objectID, filename, epoch, shard placements, n/k values
+	// Store object metadata in database
+	objectRecord := storage.ObjectRecord{
+		ObjectID:  objectID,
+		Filename:  filename,
+		FileSize:  filesize,
+		Epoch:     epoch,
+		ShardN:    n,
+		ShardK:    k,
+		Status:    "completed",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	if err := o.storageManager.StoreObjectMetadata(ctx, objectRecord); err != nil {
+		log.Printf("Warning: failed to store object metadata: %v", err)
+	}
+
+	// Store shard metadata in database
+	for shardIndex, workerID := range shardPlacements {
+		shardRecord := storage.ShardRecord{
+			ShardID:   fmt.Sprintf("%s-shard-%d", objectID, shardIndex),
+			ObjectID:  objectID,
+			ShardSize: int64(len(shards[shardIndex])),
+			WorkerID:  workerID,
+			Status:    "stored",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+
+		if err := o.storageManager.StoreShard(ctx, shardRecord); err != nil {
+			log.Printf("Warning: failed to store shard metadata for shard %d: %v", shardIndex, err)
+		}
+	}
 
 	log.Printf("Successfully distributed file %s as object %s (%d/%d shards placed)", filename, objectID, successCount, n)
 

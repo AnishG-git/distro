@@ -22,3 +22,15 @@ const (
 	StatusOnline  Status = "online"
 	StatusOffline Status = "offline"
 )
+
+// StatusFromString converts a string to Status type
+func StatusFromString(s string) Status {
+	switch s {
+	case "online":
+		return StatusOnline
+	case "offline":
+		return StatusOffline
+	default:
+		return StatusOffline // Default to offline for unknown statuses
+	}
+}

@@ -7,6 +7,7 @@ import (
 
 	"distro.lol/internal/orchestrator/shard"
 	"distro.lol/internal/orchestrator/worker"
+	"distro.lol/internal/storage"
 )
 
 // OrchestratorConfig holds orchestrator configuration
@@ -20,35 +21,43 @@ type OrchestratorConfig struct {
 	SecretThreshold    int           // Shamir's secret sharing threshold
 	SecretShares       int           // Shamir's secret sharing total shares
 	WorkerSyncInterval time.Duration // Interval for worker data sync with Supabase
-	MinAvailableSpace  int         // Minimum available space for workers
+	MinAvailableSpace  int64           // Minimum available space for workers
 }
 
 // Orchestrator coordinates all components
 type Orchestrator struct {
-	config        *OrchestratorConfig
-	workerManager worker.Manager
-	shardManager  shard.Manager
-	// storageManager *storageManager
-	ctx    context.Context
-	cancel context.CancelFunc
+	config         *OrchestratorConfig
+	workerManager  worker.Manager
+	shardManager   shard.Manager
+	storageManager storage.Manager
+	ctx            context.Context
+	cancel         context.CancelFunc
 }
 
 // NewOrchestrator creates a new orchestrator with the given configuration
 func NewOrchestrator(config *OrchestratorConfig) *Orchestrator {
 	ctx, cancel := context.WithCancel(context.Background())
-	workerManager := worker.NewManager(ctx, config.WorkerSyncInterval, config.MinAvailableSpace)
+
+	// Create storage manager
+	storageManager, err := storage.NewManager()
+	if err != nil {
+		log.Fatalf("Failed to create storage manager: %v", err)
+	}
+
+	// Create worker manager with storage manager
+	workerManager := worker.NewManager(ctx, storageManager, config.WorkerSyncInterval, config.MinAvailableSpace)
 
 	if err := workerManager.Start(); err != nil {
 		log.Fatalf("Failed to start worker manager: %v", err)
 	}
 
 	return &Orchestrator{
-		config:        config,
-		workerManager: workerManager,
-		shardManager:  shard.NewManager(ctx, config.MasterKey),
-		// storageManager: newStorageManager(ctx, config.SecretThreshold, config.SecretShares),
-		ctx:    ctx,
-		cancel: cancel,
+		config:         config,
+		workerManager:  workerManager,
+		shardManager:   shard.NewManager(ctx, config.MasterKey),
+		storageManager: storageManager,
+		ctx:            ctx,
+		cancel:         cancel,
 	}
 }
 
