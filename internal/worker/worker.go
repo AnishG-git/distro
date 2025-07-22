@@ -110,7 +110,10 @@ func (w *worker) startServer(ctx context.Context) error {
 		return err
 	}
 
-	server := grpc.NewServer()
+	server := grpc.NewServer(
+		grpc.MaxRecvMsgSize(128*1024*1024), // 128MB max receive message size
+		grpc.MaxSendMsgSize(128*1024*1024), // 128MB max send message size
+	)
 
 	// Register orchestrator grpc service
 	pb.RegisterWorkerServer(server, w)
@@ -290,10 +293,10 @@ func (w *worker) calculateUsedSpace() error {
 // 	// Get size distribution
 // 	var minSize, maxSize, avgSize sql.NullInt64
 // 	err = w.db.QueryRow(`
-// 		SELECT 
-// 			MIN(LENGTH(shard_data)), 
-// 			MAX(LENGTH(shard_data)), 
-// 			AVG(LENGTH(shard_data)) 
+// 		SELECT
+// 			MIN(LENGTH(shard_data)),
+// 			MAX(LENGTH(shard_data)),
+// 			AVG(LENGTH(shard_data))
 // 		FROM shards
 // 	`).Scan(&minSize, &maxSize, &avgSize)
 // 	if err != nil {

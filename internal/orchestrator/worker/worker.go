@@ -126,6 +126,10 @@ func (wm *workerManager) getOrCreateWorkerConn(workerID, target string) (*grpc.C
 					Timeout:             3 * time.Second,  // Wait 3 seconds for ping
 					PermitWithoutStream: true,
 				}),
+			grpc.WithDefaultCallOptions(
+                grpc.MaxCallRecvMsgSize(128*1024*1024), // 128MB max receive message size
+                grpc.MaxCallSendMsgSize(128*1024*1024), // 128MB max send message size
+            ),
 		}
 
 		newConn, err := grpc.NewClient(target, opts...)
