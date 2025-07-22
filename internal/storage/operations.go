@@ -59,7 +59,7 @@ func (m *manager) StoreObjectMetadata(ctx context.Context, object ObjectRecord) 
 }
 
 func (m *manager) GetObjectMetadata(ctx context.Context, objectID string) (*ObjectRecord, error) {
-	var objects []ObjectRecord
+	var objects ObjectRecord
 	data, _, err := m.client.From("objects").
 		Select("*", "", false).
 		Eq("object_id", objectID).
@@ -73,11 +73,7 @@ func (m *manager) GetObjectMetadata(ctx context.Context, objectID string) (*Obje
 		return nil, fmt.Errorf("failed to unmarshal object metadata: %w", err)
 	}
 
-	if len(objects) == 0 {
-		return nil, fmt.Errorf("object metadata not found for object %s", objectID)
-	}
-
-	return &objects[0], nil
+	return &objects, nil
 }
 
 // Shard operations

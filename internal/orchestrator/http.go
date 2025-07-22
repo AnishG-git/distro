@@ -92,13 +92,48 @@ func (s *httpServer) handleUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *httpServer) handleDownload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	objectID := strings.TrimPrefix(r.URL.Path, "/download/")
 	if objectID == "" {
 		http.Error(w, "Object ID is required", http.StatusBadRequest)
 		return
 	}
 
-	// Retrieve the object and send it in the response...
+	log.Printf("Received download request for object: %s", objectID)
+
+	// Get object metadata first to determine filename
+	objectMetadata, err := s.orchestrator.GetStorageManager().GetObjectMetadata(r.Context(), objectID)
+	if err != nil {
+		log.Printf("Failed to get object metadata for %s: %v", objectID, err)
+		http.Error(w, "Object not found", http.StatusNotFound)
+		return
+	}
+
+	// Retrieve and reconstruct the object
+	fileData, err := s.orchestrator.GetObject(r.Context(), objectID)
+	if err != nil {
+		log.Printf("Failed to get object %s: %v", objectID, err)
+		http.Error(w, "Failed to retrieve object", http.StatusInternalServerError)
+		return
+	}
+
+	// Set appropriate headers for file download
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, objectMetadata.Filename))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(fileData)))
+
+	// Write the file data to response
+	bytesWritten, err := w.Write(fileData)
+	if err != nil {
+		log.Printf("Failed to write file data for object %s: %v", objectID, err)
+		return
+	}
+
+	log.Printf("Successfully served object %s (%s) - %d bytes", objectID, objectMetadata.Filename, bytesWritten)
 }
 
 type uploadRequest struct {

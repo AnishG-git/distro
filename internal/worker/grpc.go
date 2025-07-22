@@ -25,7 +25,15 @@ func (w *worker) StoreShard(ctx context.Context, envelope *pb.ShardEnvelope) (*p
 
 	// Check if we have enough space
 	shardSize := int64(len(envelope.Shard))
+	availableSpace := w.capacity - w.usedSpace
+	usagePercent := float64(w.usedSpace) / float64(w.capacity) * 100
+
+	log.Printf("Storage check for shard %s: size=%d bytes, used=%d/%d bytes (%.1f%%), available=%d bytes",
+		envelope.ShardId, shardSize, w.usedSpace, w.capacity, usagePercent, availableSpace)
+
 	if w.usedSpace+shardSize > w.capacity {
+		log.Printf("Storage capacity exceeded: shard %s requires %d bytes but only %d bytes available (%.1f%% full)",
+			envelope.ShardId, shardSize, availableSpace, usagePercent)
 		return nil, fmt.Errorf("insufficient storage capacity: need %d bytes, available %d bytes",
 			shardSize, w.capacity-w.usedSpace)
 	}
@@ -47,6 +55,8 @@ func (w *worker) StoreShard(ctx context.Context, envelope *pb.ShardEnvelope) (*p
 		log.Printf("Warning: could not determine rows affected for shard %s: %v", envelope.ShardId, err)
 	}
 
+	oldUsedSpace := w.usedSpace
+
 	// Only update used space if this is a new shard
 	if rowsAffected == 1 {
 		// Check if shard already existed to determine if we should update used space
@@ -58,9 +68,14 @@ func (w *worker) StoreShard(ctx context.Context, envelope *pb.ShardEnvelope) (*p
 		case sql.ErrNoRows:
 			// New shard, update used space
 			w.usedSpace += shardSize
+			log.Printf("New shard stored: %s, capacity changed from %d to %d bytes (+%d bytes)",
+				envelope.ShardId, oldUsedSpace, w.usedSpace, shardSize)
 		case nil:
 			// Existing shard, update used space difference
+			sizeDiff := shardSize - existingSize
 			w.usedSpace = w.usedSpace - existingSize + shardSize
+			log.Printf("Existing shard updated: %s, capacity changed from %d to %d bytes (%+d bytes)",
+				envelope.ShardId, oldUsedSpace, w.usedSpace, sizeDiff)
 		}
 		// If other error, log but continue
 		if err != nil && err != sql.ErrNoRows {
@@ -68,7 +83,18 @@ func (w *worker) StoreShard(ctx context.Context, envelope *pb.ShardEnvelope) (*p
 		}
 	}
 
-	log.Printf("Successfully stored shard %s (%d bytes)", envelope.ShardId, shardSize)
+	newUsagePercent := float64(w.usedSpace) / float64(w.capacity) * 100
+	newAvailableSpace := w.capacity - w.usedSpace
+
+	log.Printf("Successfully stored shard %s (%d bytes), storage now at %.1f%% capacity (%d/%d bytes, %d bytes available)",
+		envelope.ShardId, shardSize, newUsagePercent, w.usedSpace, w.capacity, newAvailableSpace)
+
+	// Log warning if storage is getting full
+	if newUsagePercent >= 90 {
+		log.Printf("WARNING: Storage capacity critical - %.1f%% full (%d bytes remaining)", newUsagePercent, newAvailableSpace)
+	} else if newUsagePercent >= 80 {
+		log.Printf("WARNING: Storage capacity high - %.1f%% full (%d bytes remaining)", newUsagePercent, newAvailableSpace)
+	}
 
 	return &pb.StorageStats{
 		TotalCapacity: w.capacity,

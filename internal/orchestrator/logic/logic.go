@@ -146,3 +146,87 @@ func (o *Orchestrator) DistributeFile(ctx context.Context, filebytes []byte, fil
 
 	return objectID, nil
 }
+
+func (o *Orchestrator) GetObject(ctx context.Context, objectID string) ([]byte, error) {
+	// Retrieve object metadata
+	object, err := o.storageManager.GetObjectMetadata(ctx, objectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get object metadata: %w", err)
+	}
+
+	// Get shards for the object
+	shards, err := o.storageManager.GetShardsForObject(ctx, objectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get shards for object %s: %w", objectID, err)
+	}
+
+	if len(shards) < object.ShardK {
+		return nil, fmt.Errorf("not enough shards available for reconstruction: need %d, have %d", object.ShardK, len(shards))
+	}
+
+	log.Printf("Reconstructing object %s from %d shards (need %d minimum)", objectID, len(shards), object.ShardK)
+
+	// Collect shard data from workers
+	shardData := make([][]byte, len(shards))
+	type shardResult struct {
+		index int
+		data  []byte
+		err   error
+	}
+
+	results := make(chan shardResult, len(shards))
+
+	// Fetch shards concurrently from workers
+	for i, shard := range shards {
+		go func(shardIndex int, shardRecord storage.ShardRecord) {
+			// Get worker for this shard
+			worker, err := o.workerManager.GetWorker(ctx, shardRecord.WorkerID)
+			if err != nil {
+				results <- shardResult{shardIndex, nil, fmt.Errorf("failed to get worker %s: %w", shardRecord.WorkerID, err)}
+				return
+			}
+
+			// Create worker client
+			client := pbw.NewWorkerClient(worker.Conn)
+
+			// Fetch shard from worker
+			envelope, err := client.FetchShard(ctx, &pbw.ShardRequest{
+				ShardId: shardRecord.ShardID,
+			})
+			if err != nil {
+				results <- shardResult{shardIndex, nil, fmt.Errorf("failed to fetch shard %s from worker %s: %w", shardRecord.ShardID, shardRecord.WorkerID, err)}
+				return
+			}
+
+			results <- shardResult{shardIndex, envelope.Shard, nil}
+		}(i, shard)
+	}
+
+	// Collect shard data
+	fetchedCount := 0
+	for range len(shards) {
+		result := <-results
+		if result.err != nil {
+			log.Printf("Failed to fetch shard %d: %v", result.index, result.err)
+			continue
+		}
+
+		shardData[result.index] = result.data
+		fetchedCount++
+		log.Printf("Successfully fetched shard %d (%d bytes)", result.index, len(result.data))
+	}
+
+	// Check if we have enough shards for reconstruction
+	if fetchedCount < object.ShardK {
+		return nil, fmt.Errorf("insufficient shards fetched for reconstruction: need %d, got %d", object.ShardK, fetchedCount)
+	}
+
+	// Reconstruct the file from encrypted shards
+	file, err := o.shardManager.ReconstructEncryptedShards(shardData, object.Epoch, object.ShardN, object.ShardK)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reconstruct encrypted shards: %w", err)
+	}
+
+	log.Printf("Successfully reconstructed object %s (%d bytes)", objectID, len(file))
+	return file, nil
+}

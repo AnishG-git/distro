@@ -21,7 +21,7 @@ type OrchestratorConfig struct {
 	SecretThreshold    int           // Shamir's secret sharing threshold
 	SecretShares       int           // Shamir's secret sharing total shares
 	WorkerSyncInterval time.Duration // Interval for worker data sync with Supabase
-	MinAvailableSpace  int64           // Minimum available space for workers
+	MinAvailableSpace  int64         // Minimum available space for workers
 }
 
 // Orchestrator coordinates all components
@@ -69,4 +69,9 @@ func (o *Orchestrator) GetConfig() OrchestratorConfig {
 		copy(copied.MasterKey, orig.MasterKey)
 	}
 	return copied
+}
+
+// GetStorageManager returns the storage manager instance
+func (o *Orchestrator) GetStorageManager() storage.Manager {
+	return o.storageManager
 }
