@@ -60,8 +60,8 @@ type ObjectRecord struct {
 type ShardRecord struct {
 	ShardID   string    `json:"shard_id" db:"shard_id"`
 	ObjectID  string    `json:"object_id" db:"object_id"`
-	ShardSize int64     `json:"shard_size" db:"shard_size"`
 	WorkerID  string    `json:"worker_id" db:"worker_id"`
+	ShardSize int64     `json:"shard_size" db:"shard_size"`
 	Status    string    `json:"status" db:"status"` // stored, lost, corrupted
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`

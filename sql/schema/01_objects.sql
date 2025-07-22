@@ -1,10 +1,12 @@
 -- Objects table: stores metadata about distributed files
 CREATE TABLE IF NOT EXISTS objects (
-    id TEXT PRIMARY KEY,
+    object_id TEXT PRIMARY KEY,
     filename TEXT NOT NULL,
-    size BIGINT NOT NULL,
-    checksum TEXT NOT NULL,
-    metadata JSONB,
+    file_size BIGINT NOT NULL,
+    epoch TEXT NOT NULL,
+    shard_n INTEGER NOT NULL,
+    shard_k INTEGER NOT NULL,
+    status TEXT DEFAULT 'pending',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
