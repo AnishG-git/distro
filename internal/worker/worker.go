@@ -225,6 +225,91 @@ func (w *worker) initDatabase() error {
 		return fmt.Errorf("failed to create shards table: %w", err)
 	}
 
+	// Calculate used space from existing shards
+	if err := w.calculateUsedSpace(); err != nil {
+		log.Printf("Warning: failed to calculate used space: %v", err)
+		// Continue without failing - we'll use the default usedSpace value
+	}
+
 	log.Printf("SQLite database initialized successfully at %s", dbPath)
 	return nil
 }
+
+// calculateUsedSpace calculates the total used space from all shards in the database
+func (w *worker) calculateUsedSpace() error {
+	// Query to get the total size of all shards
+	query := `SELECT COALESCE(SUM(LENGTH(shard_data)), 0) as total_size, COUNT(*) as shard_count FROM shards`
+
+	var totalSize int64
+	var shardCount int
+
+	err := w.db.QueryRow(query).Scan(&totalSize, &shardCount)
+	if err != nil {
+		return fmt.Errorf("failed to calculate used space: %w", err)
+	}
+
+	// Update the worker's used space
+	oldUsedSpace := w.usedSpace
+	w.usedSpace = totalSize
+
+	usagePercent := float64(w.usedSpace) / float64(w.capacity) * 100
+	availableSpace := w.capacity - w.usedSpace
+
+	log.Printf("Calculated used space from %d existing shards: %d bytes (%.1f%% of %d bytes capacity, %d bytes available)",
+		shardCount, w.usedSpace, usagePercent, w.capacity, availableSpace)
+
+	if oldUsedSpace != w.usedSpace {
+		log.Printf("Updated used space from %d to %d bytes (difference: %+d bytes)",
+			oldUsedSpace, w.usedSpace, w.usedSpace-oldUsedSpace)
+	}
+
+	// Log warnings if storage is getting full
+	if usagePercent >= 90 {
+		log.Printf("WARNING: Storage capacity critical at startup - %.1f%% full (%d bytes remaining)",
+			usagePercent, availableSpace)
+	} else if usagePercent >= 80 {
+		log.Printf("WARNING: Storage capacity high at startup - %.1f%% full (%d bytes remaining)",
+			usagePercent, availableSpace)
+	}
+
+	return nil
+}
+
+// getShardStatistics returns detailed statistics about stored shards
+// func (w *worker) getShardStatistics() (map[string]interface{}, error) {
+// 	stats := make(map[string]interface{})
+
+// 	// Get total count and size
+// 	var totalSize int64
+// 	var shardCount int
+// 	err := w.db.QueryRow(`SELECT COALESCE(SUM(LENGTH(shard_data)), 0), COUNT(*) FROM shards`).Scan(&totalSize, &shardCount)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to get basic statistics: %w", err)
+// 	}
+
+// 	// Get size distribution
+// 	var minSize, maxSize, avgSize sql.NullInt64
+// 	err = w.db.QueryRow(`
+// 		SELECT 
+// 			MIN(LENGTH(shard_data)), 
+// 			MAX(LENGTH(shard_data)), 
+// 			AVG(LENGTH(shard_data)) 
+// 		FROM shards
+// 	`).Scan(&minSize, &maxSize, &avgSize)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to get size statistics: %w", err)
+// 	}
+
+// 	stats["shard_count"] = shardCount
+// 	stats["total_size_bytes"] = totalSize
+// 	stats["used_capacity_percent"] = float64(totalSize) / float64(w.capacity) * 100
+// 	stats["available_space_bytes"] = w.capacity - totalSize
+
+// 	if shardCount > 0 {
+// 		stats["min_shard_size_bytes"] = minSize.Int64
+// 		stats["max_shard_size_bytes"] = maxSize.Int64
+// 		stats["avg_shard_size_bytes"] = avgSize.Int64
+// 	}
+
+// 	return stats, nil
+// }
