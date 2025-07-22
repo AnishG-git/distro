@@ -20,7 +20,7 @@ func main() {
 		DefaultShardK:      3,
 		SecretThreshold:    2,
 		SecretShares:       5,
-		WorkerSyncInterval: 2 * time.Minute,
+		WorkerSyncInterval: 1 * time.Minute,
 		MinAvailableSpace:  20, // Minimum available space for workers
 	}
 

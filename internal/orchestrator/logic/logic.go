@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
 	"distro.lol/internal/orchestrator/worker"
+	"distro.lol/internal/storage"
 	pbw "distro.lol/pkg/rpc/worker"
+	"github.com/google/uuid"
 )
 
 func (o *Orchestrator) RegisterWorker(ctx context.Context, workerID, workerEndpoint string, capacity, usedSpace int64) error {
@@ -20,7 +21,7 @@ func (o *Orchestrator) RegisterWorker(ctx context.Context, workerID, workerEndpo
 
 func (o *Orchestrator) DistributeFile(ctx context.Context, filebytes []byte, filename string, filesize int64) (string, error) {
 	// Generate unique object ID for tracking
-	objectID := fmt.Sprintf("%s-%d", filename, time.Now().UnixNano())
+	objectID := uuid.NewString()
 
 	// Use configured shard parameters
 	n := o.config.DefaultShardN
@@ -66,14 +67,17 @@ func (o *Orchestrator) DistributeFile(ctx context.Context, filebytes []byte, fil
 
 	results := make(chan shardResult, n)
 
+	shardIDs := make([]string, 0, len(shards))
+
 	for i, shard := range shards {
+		shardIDs = append(shardIDs, uuid.NewString())
 		go func(shardIndex int, shardData []byte, w *worker.Worker) {
 			// Create worker client
 			client := pbw.NewWorkerClient(w.Conn)
 
 			// Create shard envelope with metadata
 			envelope := &pbw.ShardEnvelope{
-				ShardId: fmt.Sprintf("%s-shard-%d", objectID, shardIndex),
+				ShardId: shardIDs[shardIndex],
 				Shard:   shardData,
 			}
 
@@ -108,10 +112,127 @@ func (o *Orchestrator) DistributeFile(ctx context.Context, filebytes []byte, fil
 		return "", fmt.Errorf("insufficient shard placements: need %d, got %d", k, successCount)
 	}
 
-	// TODO: Store metadata in database for later retrieval
-	// This would include: objectID, filename, epoch, shard placements, n/k values
+	// Store object metadata in database
+	objectRecord := storage.ObjectRecord{
+		ObjectID: objectID,
+		Filename: filename,
+		FileSize: filesize,
+		Epoch:    epoch,
+		ShardN:   n,
+		ShardK:   k,
+		Status:   "completed",
+	}
+
+	if err := o.storageManager.StoreObjectMetadata(ctx, objectRecord); err != nil {
+		log.Printf("Warning: failed to store object metadata: %v", err)
+	}
+
+	// Store shard metadata in database
+	for shardIndex, workerID := range shardPlacements {
+		shardRecord := storage.ShardRecord{
+			ShardID:   shardIDs[shardIndex],
+			ObjectID:  objectID,
+			ShardIndex: shardIndex,
+			ShardSize: int64(len(shards[shardIndex])),
+			WorkerID:  workerID,
+			Status:    "stored",
+		}
+
+		if err := o.storageManager.StoreShard(ctx, shardRecord); err != nil {
+			log.Printf("Warning: failed to store shard metadata for shard %d: %v", shardIndex, err)
+		}
+	}
 
 	log.Printf("Successfully distributed file %s as object %s (%d/%d shards placed)", filename, objectID, successCount, n)
 
 	return objectID, nil
+}
+
+func (o *Orchestrator) GetObject(ctx context.Context, objectID string) ([]byte, error) {
+	// Retrieve object metadata
+	object, err := o.storageManager.GetObjectMetadata(ctx, objectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get object metadata: %w", err)
+	}
+
+	// Get shards for the object
+	shards, err := o.storageManager.GetShardsForObject(ctx, objectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get shards for object %s: %w", objectID, err)
+	}
+
+	if len(shards) < object.ShardK {
+		return nil, fmt.Errorf("not enough shards available for reconstruction: need %d, have %d", object.ShardK, len(shards))
+	}
+
+	log.Printf("Reconstructing object %s from %d shards (need %d minimum)", objectID, len(shards), object.ShardK)
+
+	// Collect shard data from workers
+	shardData := make([][]byte, len(shards))
+	type shardResult struct {
+		index int
+		data  []byte
+		err   error
+	}
+
+	results := make(chan shardResult, len(shards))
+
+	// Fetch shards concurrently from workers
+	for _, shard := range shards {
+		go func(shardRecord storage.ShardRecord) {
+			// Get worker for this shard
+			worker, err := o.workerManager.GetWorker(ctx, shardRecord.WorkerID)
+			if err != nil {
+				results <- shardResult{shardRecord.ShardIndex, nil, fmt.Errorf("failed to get worker %s: %w", shardRecord.WorkerID, err)}
+				return
+			}
+
+			if worker.Conn == nil {
+				results <- shardResult{shardRecord.ShardIndex, nil, fmt.Errorf("worker %s is not connected", shardRecord.WorkerID)}
+				return
+			}
+
+			// Create worker client
+			client := pbw.NewWorkerClient(worker.Conn)
+
+			// Fetch shard from worker
+			envelope, err := client.FetchShard(ctx, &pbw.ShardRequest{
+				ShardId: shardRecord.ShardID,
+			})
+			if err != nil {
+				results <- shardResult{shardRecord.ShardIndex, nil, fmt.Errorf("failed to fetch shard %s from worker %s: %w", shardRecord.ShardID, shardRecord.WorkerID, err)}
+				return
+			}
+
+			results <- shardResult{shardRecord.ShardIndex, envelope.Shard, nil}
+		}(shard)
+	}
+
+	// Collect shard data
+	fetchedCount := 0
+	for range len(shards) {
+		result := <-results
+		if result.err != nil {
+			log.Printf("Failed to fetch shard %d: %v", result.index, result.err)
+			continue
+		}
+
+		shardData[result.index] = result.data
+		fetchedCount++
+		log.Printf("Successfully fetched shard %d (%d bytes)", result.index, len(result.data))
+	}
+
+	// Check if we have enough shards for reconstruction
+	if fetchedCount < object.ShardK {
+		return nil, fmt.Errorf("insufficient shards fetched for reconstruction: need %d, got %d", object.ShardK, fetchedCount)
+	}
+
+	// Reconstruct the file from encrypted shards
+	file, err := o.shardManager.ReconstructEncryptedShards(shardData, object.Epoch, object.ShardN, object.ShardK)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reconstruct encrypted shards: %w", err)
+	}
+
+	log.Printf("Successfully reconstructed object %s (%d bytes)", objectID, len(file))
+	return file, nil
 }

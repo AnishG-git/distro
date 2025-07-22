@@ -2,14 +2,18 @@ package worker
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"path/filepath"
 	"time"
 
 	pbo "distro.lol/pkg/rpc/orchestrator"
 	pb "distro.lol/pkg/rpc/worker"
 	"github.com/google/uuid"
+	_ "github.com/mattn/go-sqlite3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -17,23 +21,18 @@ import (
 type worker struct {
 	id                   string
 	workerEndpoint       string
-	orchestratorEndpoint string // Endpoint of the orchestrator
-	capacity             int64  // Total capacity of the worker
-	usedSpace            int64  // Used space in the worker
+	orchestratorEndpoint string  // Endpoint of the orchestrator
+	capacity             int64   // Total capacity of the worker
+	usedSpace            int64   // Used space in the worker
+	db                   *sql.DB // SQLite database for shard storage
 	pb.UnimplementedWorkerServer
 }
 
-func New(workerEndpoint string, capacity int64) *worker {
-	// Initialize a new worker with the given target and capacity
+func New(workerID uuid.UUID, workerEndpoint string, capacity int64) *worker {
 	// TEST - for now we will use an environment variable for the worker ID
 	// In the real service, the worker ID would be the worker's email address after they sign up or some byproduct
-	// id := os.Getenv("WORKER_ID")
-	// orchestratorEndpoint := os.Getenv("ORCHESTRATOR_ENDPOINT")
-	// if id == "" {
-	// 	log.Fatal("WORKER_ID environment variable is not set")
-	// }
 	return &worker{
-		id:                   uuid.NewString(),
+		id:                   workerID.String(),
 		workerEndpoint:       workerEndpoint,
 		capacity:             capacity,
 		orchestratorEndpoint: "127.0.0.1:9090",
@@ -44,6 +43,13 @@ func (w *worker) Start() error {
 	if w.capacity <= w.usedSpace {
 		return fmt.Errorf("worker capacity exceeded: total capacity %d, used space %d", w.capacity, w.usedSpace)
 	}
+
+	// Initialize SQLite database before starting
+	if err := w.initDatabase(); err != nil {
+		return fmt.Errorf("failed to initialize database: %w", err)
+	}
+	defer w.db.Close()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -170,4 +176,55 @@ func (w *worker) register(ctx context.Context) error {
 	}
 
 	return fmt.Errorf("worker registration failed")
+}
+
+// initDatabase initializes the SQLite database for shard storage
+func (w *worker) initDatabase() error {
+	// Get the directory of the current executable
+	execPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get executable path: %w", err)
+	}
+
+	dbDir := filepath.Dir(execPath)
+	dbPath := filepath.Join(dbDir, fmt.Sprintf("%s.sqlite", w.id))
+
+	// Check if database already exists
+	if _, err := os.Stat(dbPath); err == nil {
+		log.Printf("Using existing SQLite database at %s", dbPath)
+	} else {
+		log.Printf("Creating new SQLite database at %s", dbPath)
+	}
+
+	// Open database connection
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+
+	w.db = db
+
+	// Create shards table if it doesn't exist
+	createTableSQL := `
+	CREATE TABLE IF NOT EXISTS shards (
+		shard_id TEXT PRIMARY KEY,
+		shard_data BLOB NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	
+	CREATE TRIGGER IF NOT EXISTS update_shards_updated_at 
+	AFTER UPDATE ON shards
+	FOR EACH ROW
+	BEGIN
+		UPDATE shards SET updated_at = CURRENT_TIMESTAMP WHERE shard_id = NEW.shard_id;
+	END;
+	`
+
+	if _, err := db.Exec(createTableSQL); err != nil {
+		return fmt.Errorf("failed to create shards table: %w", err)
+	}
+
+	log.Printf("SQLite database initialized successfully at %s", dbPath)
+	return nil
 }
