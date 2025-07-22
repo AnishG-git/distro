@@ -132,6 +132,7 @@ func (o *Orchestrator) DistributeFile(ctx context.Context, filebytes []byte, fil
 		shardRecord := storage.ShardRecord{
 			ShardID:   shardIDs[shardIndex],
 			ObjectID:  objectID,
+			ShardIndex: shardIndex,
 			ShardSize: int64(len(shards[shardIndex])),
 			WorkerID:  workerID,
 			Status:    "stored",
@@ -177,12 +178,17 @@ func (o *Orchestrator) GetObject(ctx context.Context, objectID string) ([]byte, 
 	results := make(chan shardResult, len(shards))
 
 	// Fetch shards concurrently from workers
-	for i, shard := range shards {
-		go func(shardIndex int, shardRecord storage.ShardRecord) {
+	for _, shard := range shards {
+		go func(shardRecord storage.ShardRecord) {
 			// Get worker for this shard
 			worker, err := o.workerManager.GetWorker(ctx, shardRecord.WorkerID)
 			if err != nil {
-				results <- shardResult{shardIndex, nil, fmt.Errorf("failed to get worker %s: %w", shardRecord.WorkerID, err)}
+				results <- shardResult{shardRecord.ShardIndex, nil, fmt.Errorf("failed to get worker %s: %w", shardRecord.WorkerID, err)}
+				return
+			}
+
+			if worker.Conn == nil {
+				results <- shardResult{shardRecord.ShardIndex, nil, fmt.Errorf("worker %s is not connected", shardRecord.WorkerID)}
 				return
 			}
 
@@ -194,12 +200,12 @@ func (o *Orchestrator) GetObject(ctx context.Context, objectID string) ([]byte, 
 				ShardId: shardRecord.ShardID,
 			})
 			if err != nil {
-				results <- shardResult{shardIndex, nil, fmt.Errorf("failed to fetch shard %s from worker %s: %w", shardRecord.ShardID, shardRecord.WorkerID, err)}
+				results <- shardResult{shardRecord.ShardIndex, nil, fmt.Errorf("failed to fetch shard %s from worker %s: %w", shardRecord.ShardID, shardRecord.WorkerID, err)}
 				return
 			}
 
-			results <- shardResult{shardIndex, envelope.Shard, nil}
-		}(i, shard)
+			results <- shardResult{shardRecord.ShardIndex, envelope.Shard, nil}
+		}(shard)
 	}
 
 	// Collect shard data

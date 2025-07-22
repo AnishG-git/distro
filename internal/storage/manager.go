@@ -44,21 +44,22 @@ type WorkerRecord struct {
 }
 
 type ObjectRecord struct {
-	ObjectID  string    `json:"object_id" db:"object_id"`
-	Filename  string    `json:"filename" db:"filename"`
-	FileSize  int64     `json:"file_size" db:"file_size"`
-	Epoch     string    `json:"epoch" db:"epoch"`
-	ShardN    int       `json:"shard_n" db:"shard_n"`
-	ShardK    int       `json:"shard_k" db:"shard_k"`
-	Status    string    `json:"status" db:"status"` // uploading, completed, failed
+	ObjectID string `json:"object_id" db:"object_id"`
+	Filename string `json:"filename" db:"filename"`
+	FileSize int64  `json:"file_size" db:"file_size"`
+	Epoch    string `json:"epoch" db:"epoch"`
+	ShardN   int    `json:"shard_n" db:"shard_n"`
+	ShardK   int    `json:"shard_k" db:"shard_k"`
+	Status   string `json:"status" db:"status"` // uploading, completed, failed
 }
 
 type ShardRecord struct {
-	ShardID   string    `json:"shard_id" db:"shard_id"`
-	ObjectID  string    `json:"object_id" db:"object_id"`
-	WorkerID  string    `json:"worker_id" db:"worker_id"`
-	ShardSize int64     `json:"shard_size" db:"shard_size"`
-	Status    string    `json:"status" db:"status"` // stored, lost, corrupted
+	ShardID    string `json:"shard_id" db:"shard_id"`
+	ObjectID   string `json:"object_id" db:"object_id"`
+	WorkerID   string `json:"worker_id" db:"worker_id"`
+	ShardIndex int    `json:"shard_index" db:"shard_index"` // Original index of the shard
+	ShardSize  int64  `json:"shard_size" db:"shard_size"`
+	Status     string `json:"status" db:"status"` // stored, lost, corrupted
 }
 
 func NewManager() (Manager, error) {
