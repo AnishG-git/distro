@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
 	"distro.lol/internal/orchestrator/worker"
 	"distro.lol/internal/storage"
 	pbw "distro.lol/pkg/rpc/worker"
+	"github.com/google/uuid"
 )
 
 func (o *Orchestrator) RegisterWorker(ctx context.Context, workerID, workerEndpoint string, capacity, usedSpace int64) error {
@@ -21,7 +21,7 @@ func (o *Orchestrator) RegisterWorker(ctx context.Context, workerID, workerEndpo
 
 func (o *Orchestrator) DistributeFile(ctx context.Context, filebytes []byte, filename string, filesize int64) (string, error) {
 	// Generate unique object ID for tracking
-	objectID := fmt.Sprintf("%s-%d", filename, time.Now().UnixNano())
+	objectID := uuid.NewString()
 
 	// Use configured shard parameters
 	n := o.config.DefaultShardN
@@ -67,14 +67,17 @@ func (o *Orchestrator) DistributeFile(ctx context.Context, filebytes []byte, fil
 
 	results := make(chan shardResult, n)
 
+	shardIDs := make([]string, 0, len(shards))
+
 	for i, shard := range shards {
+		shardIDs = append(shardIDs, uuid.NewString())
 		go func(shardIndex int, shardData []byte, w *worker.Worker) {
 			// Create worker client
 			client := pbw.NewWorkerClient(w.Conn)
 
 			// Create shard envelope with metadata
 			envelope := &pbw.ShardEnvelope{
-				ShardId: fmt.Sprintf("%s-shard-%d", objectID, shardIndex),
+				ShardId: shardIDs[shardIndex],
 				Shard:   shardData,
 			}
 
@@ -111,13 +114,13 @@ func (o *Orchestrator) DistributeFile(ctx context.Context, filebytes []byte, fil
 
 	// Store object metadata in database
 	objectRecord := storage.ObjectRecord{
-		ObjectID:  objectID,
-		Filename:  filename,
-		FileSize:  filesize,
-		Epoch:     epoch,
-		ShardN:    n,
-		ShardK:    k,
-		Status:    "completed",
+		ObjectID: objectID,
+		Filename: filename,
+		FileSize: filesize,
+		Epoch:    epoch,
+		ShardN:   n,
+		ShardK:   k,
+		Status:   "completed",
 	}
 
 	if err := o.storageManager.StoreObjectMetadata(ctx, objectRecord); err != nil {
@@ -127,7 +130,7 @@ func (o *Orchestrator) DistributeFile(ctx context.Context, filebytes []byte, fil
 	// Store shard metadata in database
 	for shardIndex, workerID := range shardPlacements {
 		shardRecord := storage.ShardRecord{
-			ShardID:   fmt.Sprintf("%s-shard-%d", objectID, shardIndex),
+			ShardID:   shardIDs[shardIndex],
 			ObjectID:  objectID,
 			ShardSize: int64(len(shards[shardIndex])),
 			WorkerID:  workerID,

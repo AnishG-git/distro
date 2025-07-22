@@ -238,6 +238,7 @@ func (wm *workerManager) performHealthChecks() {
 			info.worker.UsedCapacity = usedSpace
 			info.worker.LastHeartbeat = time.Now()
 			wm.mu.Unlock()
+			log.Printf("Worker %s is online with capacity %d and used space %d", info.id, capacity, usedSpace)
 		}
 		// log.Printf("Worker %s is %s and has a conn with status %s", info.id, info.worker.Status, info.conn.GetState().String())
 	}

@@ -74,6 +74,7 @@ func (s *httpServer) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	id, err := s.orchestrator.DistributeFile(r.Context(), fileBytes, header.Filename, header.Size)
 	if err != nil {
+		log.Printf("Failed to distribute file: %v", err)
 		http.Error(w, "Failed to distribute file", http.StatusInternalServerError)
 		return
 	}
@@ -83,7 +84,7 @@ func (s *httpServer) handleUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to create response", http.StatusInternalServerError)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(responseBytes)
 
