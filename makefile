@@ -12,3 +12,10 @@ testv:
 
 testc:
 	go test -cover ./...
+
+
+build:
+	docker-compose build
+
+run:
+	docker-compose up -d

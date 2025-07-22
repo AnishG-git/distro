@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 
-	"distro.lol/internal/storage"
+	"distro.lol/internal/orchestrator/storage"
 	pbw "distro.lol/pkg/rpc/worker"
 )
 

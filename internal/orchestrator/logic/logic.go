@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"distro.lol/internal/orchestrator/worker"
-	"distro.lol/internal/storage"
+	"distro.lol/internal/orchestrator/storage"
 	pbw "distro.lol/pkg/rpc/worker"
 	"github.com/google/uuid"
 )

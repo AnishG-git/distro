@@ -1,0 +1,129 @@
+# docker-compose.yml
+
+services:
+  # Orchestrator
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    ports:
+      - "8080:8080" # HTTP API
+      # - "9090:9090"  # gRPC for worker communication
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - MASTER_KEY=${MASTER_KEY}
+      - HTTP_PORT=8080
+      - GRPC_PORT=${GRPC_PORT}
+    networks:
+      - distro-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8080/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  # Workers
+  worker1:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - WORKER_ID=10000000-8767-41f7-abe0-a6c64289184e
+      - WORKER_ENDPOINT=worker1:7070
+      - ORCHESTRATOR_ENDPOINT=orchestrator:${GRPC_PORT}
+      - WORKER_CAPACITY=1073741824 # 1GB
+    volumes:
+      - ./data/worker1:/app/data
+    networks:
+      - distro-network
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker2:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - WORKER_ID=20000000-8767-41f7-abe0-a6c64289184e
+      - WORKER_ENDPOINT=worker2:7070
+      - ORCHESTRATOR_ENDPOINT=orchestrator:${GRPC_PORT}
+      - WORKER_CAPACITY=1073741824 # 1GB
+    volumes:
+      - ./data/worker2:/app/data
+    networks:
+      - distro-network
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker3:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - WORKER_ID=30000000-8767-41f7-abe0-a6c64289184e
+      - WORKER_ENDPOINT=worker3:7070
+      - ORCHESTRATOR_ENDPOINT=orchestrator:${GRPC_PORT}
+      - WORKER_CAPACITY=1073741824 # 1GB
+    volumes:
+      - ./data/worker3:/app/data
+    networks:
+      - distro-network
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker4:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - WORKER_ID=40000000-8767-41f7-abe0-a6c64289184e
+      - WORKER_ENDPOINT=worker4:7070
+      - ORCHESTRATOR_ENDPOINT=orchestrator:${GRPC_PORT}
+      - WORKER_CAPACITY=1073741824 # 1GB
+    volumes:
+      - ./data/worker4:/app/data
+    networks:
+      - distro-network
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker5:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - WORKER_ID=50000000-8767-41f7-abe0-a6c64289184e
+      - WORKER_ENDPOINT=worker5:7070
+      - ORCHESTRATOR_ENDPOINT=orchestrator:${GRPC_PORT}
+      - WORKER_CAPACITY=1073741824 # 1GB
+    volumes:
+      - ./data/worker5:/app/data
+    networks:
+      - distro-network
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  distro-network:
+    driver: bridge

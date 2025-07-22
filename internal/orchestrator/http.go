@@ -20,6 +20,9 @@ type httpServer struct {
 func (s *httpServer) start(ctx context.Context, errChan chan error) {
 	mux := http.NewServeMux()
 
+	// Health check endpoint
+	mux.HandleFunc("/health", s.handleHealth)
+
 	// Client REST endpoints
 	mux.HandleFunc("/upload", s.handleUpload)
 	mux.HandleFunc("/download/", s.handleDownload) // /download/{objectID}
@@ -143,4 +146,30 @@ type uploadRequest struct {
 
 type uploadResponse struct {
 	ObjectID string `json:"object_id"`
+}
+
+func (s *httpServer) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Simple health check - verify orchestrator is running
+	status := map[string]any{
+		"status":  "healthy",
+		"service": "orchestrator",
+	}
+
+	// Optional: Add basic component health checks
+	// Check if storage manager is accessible
+	if s.orchestrator.GetStorageManager() == nil {
+		status["status"] = "unhealthy"
+		status["error"] = "storage manager not available"
+		w.WriteHeader(http.StatusServiceUnavailable)
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(status)
 }

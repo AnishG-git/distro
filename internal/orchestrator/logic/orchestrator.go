@@ -7,7 +7,7 @@ import (
 
 	"distro.lol/internal/orchestrator/shard"
 	"distro.lol/internal/orchestrator/worker"
-	"distro.lol/internal/storage"
+	"distro.lol/internal/orchestrator/storage"
 )
 
 // OrchestratorConfig holds orchestrator configuration

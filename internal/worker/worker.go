@@ -28,14 +28,14 @@ type worker struct {
 	pb.UnimplementedWorkerServer
 }
 
-func New(workerID uuid.UUID, workerEndpoint string, capacity int64) *worker {
+func New(workerID uuid.UUID, workerEndpoint, orchestratorEndpoint string, capacity int64) *worker {
 	// TEST - for now we will use an environment variable for the worker ID
 	// In the real service, the worker ID would be the worker's email address after they sign up or some byproduct
 	return &worker{
 		id:                   workerID.String(),
 		workerEndpoint:       workerEndpoint,
 		capacity:             capacity,
-		orchestratorEndpoint: "127.0.0.1:9090",
+		orchestratorEndpoint: orchestratorEndpoint,
 	}
 }
 
@@ -190,7 +190,7 @@ func (w *worker) initDatabase() error {
 	}
 
 	dbDir := filepath.Dir(execPath)
-	dbPath := filepath.Join(dbDir, fmt.Sprintf("%s.sqlite", w.id))
+	dbPath := filepath.Join(dbDir, "data", fmt.Sprintf("%s.sqlite", w.id))
 
 	// Check if database already exists
 	if _, err := os.Stat(dbPath); err == nil {
