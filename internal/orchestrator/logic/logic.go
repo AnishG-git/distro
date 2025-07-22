@@ -118,8 +118,6 @@ func (o *Orchestrator) DistributeFile(ctx context.Context, filebytes []byte, fil
 		ShardN:    n,
 		ShardK:    k,
 		Status:    "completed",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
 	}
 
 	if err := o.storageManager.StoreObjectMetadata(ctx, objectRecord); err != nil {
@@ -134,8 +132,6 @@ func (o *Orchestrator) DistributeFile(ctx context.Context, filebytes []byte, fil
 			ShardSize: int64(len(shards[shardIndex])),
 			WorkerID:  workerID,
 			Status:    "stored",
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
 		}
 
 		if err := o.storageManager.StoreShard(ctx, shardRecord); err != nil {

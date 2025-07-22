@@ -41,8 +41,6 @@ type WorkerRecord struct {
 	UsedCapacity   int64     `json:"used_capacity" db:"used_capacity"`
 	Status         string    `json:"status" db:"status"`
 	LastHeartbeat  time.Time `json:"last_heartbeat" db:"last_heartbeat"`
-	CreatedAt      time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
 }
 
 type ObjectRecord struct {
@@ -53,8 +51,6 @@ type ObjectRecord struct {
 	ShardN    int       `json:"shard_n" db:"shard_n"`
 	ShardK    int       `json:"shard_k" db:"shard_k"`
 	Status    string    `json:"status" db:"status"` // uploading, completed, failed
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
 type ShardRecord struct {
@@ -63,8 +59,6 @@ type ShardRecord struct {
 	WorkerID  string    `json:"worker_id" db:"worker_id"`
 	ShardSize int64     `json:"shard_size" db:"shard_size"`
 	Status    string    `json:"status" db:"status"` // stored, lost, corrupted
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
 func NewManager() (Manager, error) {

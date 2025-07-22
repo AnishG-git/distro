@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 
@@ -137,24 +136,55 @@ func (wm *workerManager) getOrCreateWorkerConn(workerID, target string) (*grpc.C
 		conn = newConn
 	}
 
-	// log.Printf("Worker %s is online with capacity %d and used space %d", target, capacity, usedSpace)
+	totalCapacity, usedCapacity, err := wm.retrieveWorkerStats(conn)
+	if err != nil {
+		wm.mu.Lock()
+		defer wm.mu.Unlock()
+		if worker, ok := wm.workers[workerID]; ok {
+			conn.Close() // Close connection if ping fails
+			worker.Conn = nil // Clear connection if ping fails
+			worker.Status = StatusOffline // Set status to offline
+		}
+		log.Printf("failed to ping worker %s at %s: %v", workerID, target, err)
+		return nil, err
+	}
+
+	wm.mu.Lock()
+	if worker, ok := wm.workers[workerID]; ok {
+		worker.Conn = conn
+		worker.TotalCapacity = totalCapacity
+		worker.UsedCapacity = usedCapacity
+		worker.Status = StatusOnline
+		worker.LastHeartbeat = time.Now()
+	}
+	wm.mu.Unlock()
+
+	log.Printf("Worker %s is online with capacity %d and used space %d", workerID, totalCapacity, usedCapacity)
 	return conn, nil
 }
 
-func isAlive(conn *grpc.ClientConn) bool {
+// retrieveWorkerStats pings the worker with a deadline of 3 seconds to check its status and retrieve storage stats
+// also retrieves total and used capacity
+func (wm *workerManager) retrieveWorkerStats(conn *grpc.ClientConn) (int64, int64, error) {
 	if conn == nil {
-		return false
+		return 0, 0, fmt.Errorf("worker connection is nil")
 	}
-	state := conn.GetState()
-	if state == connectivity.Shutdown || state == connectivity.TransientFailure {
-		return false
+
+	ctx, cancel := context.WithTimeout(wm.ctx, 3*time.Second)
+	defer cancel()
+
+	workerCli := pbw.NewWorkerClient(conn)
+	storageStats, err := workerCli.Ping(ctx, &pbw.PingRequest{Ping: "ping"})
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to ping worker: %w", err)
 	}
-	return true
+
+	return storageStats.TotalCapacity, storageStats.UsedCapacity, nil
 }
 
 // startHealthCheckLoop runs periodic health checks on all workers
 func (wm *workerManager) startHealthCheckLoop() {
-	ticker := time.NewTicker(10 * time.Second) // Health check every 10 seconds
+	ticker := time.NewTicker(30 * time.Second) // Health check every 30 seconds
 	defer ticker.Stop()
 
 	for {
@@ -171,45 +201,46 @@ func (wm *workerManager) startHealthCheckLoop() {
 
 // performHealthChecks checks the health of all workers
 func (wm *workerManager) performHealthChecks() {
-	wm.mu.Lock()
-	defer wm.mu.Unlock()
+	// Create a temporary slice to hold worker information needed for health checks
+	type workerInfo struct {
+		id     string
+		conn   *grpc.ClientConn
+		worker *Worker
+	}
+
+	var workersToCheck []workerInfo
+
+	wm.mu.RLock()
 	for workerID, worker := range wm.workers {
-		// healthy := worker.LastHeartbeat.Add(45 * time.Second).After(now)
-		// newStatus := StatusOffline
-		// if healthy {
-		// 	newStatus = StatusOnline
-		// }
-		// if worker.Status != newStatus {
-		// 	worker.Status = newStatus
-		// 	log.Printf("Health Check: Worker %s status changed to %v", workerID, newStatus)
-		// }
-		if !isAlive(worker.Conn) {
-			log.Printf("Worker %s is offline, changing status", workerID)
-			worker.Status = StatusOffline
+		workersToCheck = append(workersToCheck, workerInfo{
+			id:     workerID,
+			conn:   worker.Conn,
+			worker: worker,
+		})
+	}
+	wm.mu.RUnlock()
+
+	// Now perform health checks without holding the lock
+	for _, info := range workersToCheck {
+		if capacity, usedSpace, err := wm.retrieveWorkerStats(info.conn); err != nil {
+			log.Printf("Worker %s is offline: %v", info.id, err)
+			wm.mu.Lock()
+			if info.worker.Status != StatusOffline && info.worker.Conn != nil {
+				info.worker.Status = StatusOffline
+				info.worker.Conn.Close() // Close connection if offline
+				info.worker.Conn = nil   // Clear connection
+			}
+			wm.mu.Unlock()
+		} else {
+			wm.mu.Lock()
+			info.worker.Status = StatusOnline
+			info.worker.TotalCapacity = capacity
+			info.worker.UsedCapacity = usedSpace
+			info.worker.LastHeartbeat = time.Now()
+			wm.mu.Unlock()
 		}
-		log.Printf("Worker %s is %s and has a conn with status %s", workerID, worker.Status, worker.Conn.GetState().String())
+		// log.Printf("Worker %s is %s and has a conn with status %s", info.id, info.worker.Status, info.conn.GetState().String())
 	}
-}
-
-// gets worker's stats from worker's connection
-// also can be used to ping worker
-func (wm *workerManager) retrieveWorkerStats(conn *grpc.ClientConn) (int64, int64, error) {
-	if conn == nil {
-		return 0, 0, fmt.Errorf("worker has no gRPC connection")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	stats, err := pbw.NewWorkerClient(conn).Ping(ctx, &pbw.PingRequest{
-		Ping: "ping",
-	})
-
-	if err != nil {
-		return 0, 0, fmt.Errorf("ping failed for worker: %w", err)
-	}
-
-	return stats.TotalCapacity, stats.UsedCapacity, nil
 }
 
 // Stop stops the worker manager and closes all connections
@@ -263,7 +294,6 @@ func (wm *workerManager) syncWorkersWithStorage() error {
 			UsedCapacity:   worker.UsedCapacity,
 			Status:         string(worker.Status),
 			LastHeartbeat:  worker.LastHeartbeat,
-			UpdatedAt:      time.Now(),
 		}
 		records = append(records, record)
 	}
@@ -319,8 +349,6 @@ func (wm *workerManager) RegisterWorker(ctx context.Context, workerID, workerEnd
 		UsedCapacity:   worker.UsedCapacity,
 		Status:         string(worker.Status),
 		LastHeartbeat:  worker.LastHeartbeat,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
 	}
 
 	if err := wm.storageManager.UpsertWorker(ctx, record); err != nil {
