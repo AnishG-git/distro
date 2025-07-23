@@ -17,20 +17,17 @@ services:
       - GRPC_PORT=${GRPC_PORT}
     networks:
       - distro-network
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--no-verbose",
-          "--tries=1",
-          "--spider",
-          "http://localhost:8080/health",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
+    # healthcheck:
+    #   test:
+    #     [
+    #       "CMD",
+    #       "curl",
+    #       "http://localhost:8080/health",
+    #     ]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 20s
     restart: unless-stopped
 
   # Workers
@@ -47,9 +44,9 @@ services:
       - ./data/worker1:/app/data
     networks:
       - distro-network
-    depends_on:
-      orchestrator:
-        condition: service_healthy
+    # depends_on:
+    #   orchestrator:
+    #     condition: service_healthy
     restart: unless-stopped
 
   worker2:
@@ -65,9 +62,9 @@ services:
       - ./data/worker2:/app/data
     networks:
       - distro-network
-    depends_on:
-      orchestrator:
-        condition: service_healthy
+    # depends_on:
+    #   orchestrator:
+    #     condition: service_healthy
     restart: unless-stopped
 
   worker3:
@@ -83,9 +80,9 @@ services:
       - ./data/worker3:/app/data
     networks:
       - distro-network
-    depends_on:
-      orchestrator:
-        condition: service_healthy
+    # depends_on:
+    #   orchestrator:
+    #     condition: service_healthy
     restart: unless-stopped
 
   worker4:
@@ -101,9 +98,9 @@ services:
       - ./data/worker4:/app/data
     networks:
       - distro-network
-    depends_on:
-      orchestrator:
-        condition: service_healthy
+    # depends_on:
+    #   orchestrator:
+    #     condition: service_healthy
     restart: unless-stopped
 
   worker5:
@@ -119,9 +116,9 @@ services:
       - ./data/worker5:/app/data
     networks:
       - distro-network
-    depends_on:
-      orchestrator:
-        condition: service_healthy
+    # depends_on:
+    #   orchestrator:
+    #     condition: service_healthy
     restart: unless-stopped
 
 networks:

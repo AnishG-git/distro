@@ -154,6 +154,8 @@ func (s *httpServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Println("HTTP Server health check requested")
+
 	// Simple health check - verify orchestrator is running
 	status := map[string]any{
 		"status":  "healthy",

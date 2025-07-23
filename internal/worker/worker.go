@@ -13,9 +13,9 @@ import (
 	pbo "distro.lol/pkg/rpc/orchestrator"
 	pb "distro.lol/pkg/rpc/worker"
 	"github.com/google/uuid"
-	_ "github.com/mattn/go-sqlite3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	_ "modernc.org/sqlite"
 )
 
 type worker struct {
@@ -200,7 +200,7 @@ func (w *worker) initDatabase() error {
 	}
 
 	// Open database connection
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}

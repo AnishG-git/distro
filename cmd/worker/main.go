@@ -24,9 +24,8 @@ func main() {
 	}
 
 	workerEndpoint := os.Getenv("WORKER_ENDPOINT")
-	_, err = strconv.Atoi(workerEndpoint)
-	if err != nil {
-		log.Fatalf("Invalid WORKER_ENDPOINT environment variable, must be a valid port number: %v", err)
+	if workerEndpoint == "" {
+		log.Fatalf("WORKER_ENDPOINT environment variable is required")
 	}
 
 	orchestratorEndpoint := os.Getenv("ORCHESTRATOR_ENDPOINT")

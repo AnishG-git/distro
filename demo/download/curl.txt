@@ -1,0 +1,1 @@
+curl -X GET http://localhost:8080/download/<object_id> -o ./download/output.txt
