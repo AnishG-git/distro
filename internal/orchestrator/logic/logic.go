@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"distro.lol/internal/orchestrator/worker"
-	"distro.lol/internal/storage"
+	"distro.lol/internal/orchestrator/storage"
 	pbw "distro.lol/pkg/rpc/worker"
 	"github.com/google/uuid"
 )
@@ -48,6 +48,14 @@ func (o *Orchestrator) DistributeFile(ctx context.Context, filebytes []byte, fil
 	for _, w := range workers {
 		if w.Status == worker.StatusOnline && w.TotalCapacity-w.UsedCapacity > int64(len(shards[0])) {
 			availableWorkers = append(availableWorkers, w)
+			log.Printf("Added worker %s to available workers (capacity: %d/%d bytes)", w.WorkerID, w.UsedCapacity, w.TotalCapacity)
+		} else {
+			if w.Status != worker.StatusOnline {
+				log.Printf("Skipping worker %s: status is %s (not online)", w.WorkerID, w.Status)
+			} else {
+				log.Printf("Skipping worker %s: insufficient capacity (available: %d bytes, needed: %d bytes)", 
+					w.WorkerID, w.TotalCapacity-w.UsedCapacity, len(shards[0]))
+			}
 		}
 	}
 

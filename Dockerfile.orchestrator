@@ -1,0 +1,23 @@
+# Dockerfile.orchestrator
+FROM golang:1.24-alpine AS builder
+
+WORKDIR /app
+COPY . .
+
+RUN go build -o orchestrator ./cmd/orchestrator
+
+FROM alpine:3.19
+
+# Install wget for healthcheck
+RUN apk add --no-cache wget
+
+WORKDIR /app
+COPY --from=builder /app/orchestrator /app/orchestrator
+
+# Environment variables for Supabase connection
+ENV SUPABASE_URL=""
+ENV SUPABASE_KEY=""
+ENV HTTP_PORT=8080
+ENV GRPC_PORT=9090
+
+CMD ["/app/orchestrator"]

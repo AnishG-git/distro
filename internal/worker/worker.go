@@ -13,9 +13,9 @@ import (
 	pbo "distro.lol/pkg/rpc/orchestrator"
 	pb "distro.lol/pkg/rpc/worker"
 	"github.com/google/uuid"
-	_ "github.com/mattn/go-sqlite3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	_ "modernc.org/sqlite"
 )
 
 type worker struct {
@@ -28,14 +28,14 @@ type worker struct {
 	pb.UnimplementedWorkerServer
 }
 
-func New(workerID uuid.UUID, workerEndpoint string, capacity int64) *worker {
+func New(workerID uuid.UUID, workerEndpoint, orchestratorEndpoint string, capacity int64) *worker {
 	// TEST - for now we will use an environment variable for the worker ID
 	// In the real service, the worker ID would be the worker's email address after they sign up or some byproduct
 	return &worker{
 		id:                   workerID.String(),
 		workerEndpoint:       workerEndpoint,
 		capacity:             capacity,
-		orchestratorEndpoint: "127.0.0.1:9090",
+		orchestratorEndpoint: orchestratorEndpoint,
 	}
 }
 
@@ -110,7 +110,10 @@ func (w *worker) startServer(ctx context.Context) error {
 		return err
 	}
 
-	server := grpc.NewServer()
+	server := grpc.NewServer(
+		grpc.MaxRecvMsgSize(128*1024*1024), // 128MB max receive message size
+		grpc.MaxSendMsgSize(128*1024*1024), // 128MB max send message size
+	)
 
 	// Register orchestrator grpc service
 	pb.RegisterWorkerServer(server, w)
@@ -187,7 +190,7 @@ func (w *worker) initDatabase() error {
 	}
 
 	dbDir := filepath.Dir(execPath)
-	dbPath := filepath.Join(dbDir, fmt.Sprintf("%s.sqlite", w.id))
+	dbPath := filepath.Join(dbDir, "data", fmt.Sprintf("%s.sqlite", w.id))
 
 	// Check if database already exists
 	if _, err := os.Stat(dbPath); err == nil {
@@ -197,7 +200,7 @@ func (w *worker) initDatabase() error {
 	}
 
 	// Open database connection
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
@@ -290,10 +293,10 @@ func (w *worker) calculateUsedSpace() error {
 // 	// Get size distribution
 // 	var minSize, maxSize, avgSize sql.NullInt64
 // 	err = w.db.QueryRow(`
-// 		SELECT 
-// 			MIN(LENGTH(shard_data)), 
-// 			MAX(LENGTH(shard_data)), 
-// 			AVG(LENGTH(shard_data)) 
+// 		SELECT
+// 			MIN(LENGTH(shard_data)),
+// 			MAX(LENGTH(shard_data)),
+// 			AVG(LENGTH(shard_data))
 // 		FROM shards
 // 	`).Scan(&minSize, &maxSize, &avgSize)
 // 	if err != nil {

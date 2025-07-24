@@ -1,0 +1,25 @@
+# Dockerfile.worker
+FROM golang:1.24-alpine AS builder
+
+WORKDIR /app
+COPY . .
+
+RUN go build -o worker ./cmd/worker
+
+FROM alpine:3.19
+
+WORKDIR /app
+COPY --from=builder /app/worker /app/worker
+
+# Set environment variables
+ENV WORKER_ID=""
+ENV WORKER_ENDPOINT=""
+ENV ORCHESTRATOR_ENDPOINT=""
+ENV WORKER_CAPACITY=1073741824
+
+# Volume for persistent storage
+RUN mkdir -p /app/data
+VOLUME ["/app/data"]
+
+# Command with configurable arguments
+CMD ["/app/worker"]

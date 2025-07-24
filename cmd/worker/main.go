@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -24,10 +23,14 @@ func main() {
 		return
 	}
 
-	workerPort := os.Getenv("WORKER_PORT")
-	_, err = strconv.Atoi(workerPort)
-	if err != nil {
-		log.Fatalf("Invalid WORKER_PORT environment variable, must be a valid port number: %v", err)
+	workerEndpoint := os.Getenv("WORKER_ENDPOINT")
+	if workerEndpoint == "" {
+		log.Fatalf("WORKER_ENDPOINT environment variable is required")
+	}
+
+	orchestratorEndpoint := os.Getenv("ORCHESTRATOR_ENDPOINT")
+	if orchestratorEndpoint == "" {
+		log.Fatalf("ORCHESTRATOR_ENDPOINT environment variable is required")
 	}
 
 	capacityStr := os.Getenv("WORKER_CAPACITY")
@@ -36,7 +39,7 @@ func main() {
 		log.Fatalf("Invalid WORKER_CAPACITY environment variable, must be an integer: %v", err)
 	}
 
-	worker := worker.New(workerUUID, fmt.Sprintf("127.0.0.1:%s", workerPort), capacity)
+	worker := worker.New(workerUUID, workerEndpoint, orchestratorEndpoint, capacity)
 
 	if err := worker.Start(); err != nil {
 		log.Fatalf("Failed to start worker: %v", err)
